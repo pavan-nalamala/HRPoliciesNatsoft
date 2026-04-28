@@ -1,0 +1,18 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "groupaccidentalwebpartform-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/groupaccidentalwebpartform/GroupaccidentalwebpartformWebPart.js",
+          "manifest": "./src/webparts/groupaccidentalwebpartform/GroupaccidentalwebpartformWebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {
+    "GroupaccidentalwebpartformWebPartStrings": "lib/webparts/groupaccidentalwebpartform/loc/{locale}.js"
+  }
+}

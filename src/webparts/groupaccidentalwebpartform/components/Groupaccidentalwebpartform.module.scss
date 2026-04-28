@@ -1,0 +1,110 @@
+/* SharePoint Full Width */
+html,
+body {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+:global(.CanvasComponent),
+:global(.CanvasComponent.LCS .CanvasZone),
+:global(.SPCanvas),
+:global(#workbenchPageContent) {
+  width: 100% !important;
+  max-width: 100% !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Disable Resize */
+textarea,
+textarea.form-control {
+  resize: none !important;
+}
+
+/* Layout */
+.formsLayout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 20px;
+  margin-top: 12px;
+  align-items: start;
+}
+
+.formsSidebar {
+  width: 100%;
+}
+
+.formsPreview {
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #bbd8e9;
+  border-radius: 14px;
+  background: #fff;
+  overflow: auto;
+}
+
+/* Title */
+.pageTitle {
+  font-size: 26px;
+  font-weight: 700;
+  margin-bottom: 14px;
+  color: #001d39;
+}
+
+/* Nav */
+.topNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 12px;
+  background: linear-gradient(135deg, #e4f0f8, #bbd8e9);
+  border-radius: 14px;
+}
+
+.navItem {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: #001d39;
+  background: #bbd8e9;
+  transition: all 0.25s ease;
+}
+
+.navItem:hover {
+  background: #7bbde8;
+}
+
+.navItemActive {
+  background: linear-gradient(135deg, #0a4174, #49769f);
+  color: #fff;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .formsLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .pageTitle {
+    font-size: 22px;
+  }
+
+  .navItem {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+
+  .formsPreview {
+    padding: 8px;
+  }
+}
+
+input,textarea,select .form-control,.form-select {
+  border: 1px solid #000 !important;
+}

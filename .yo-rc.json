@@ -1,0 +1,20 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "useGulp": false,
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "20.19.0",
+    "sdksVersions": {},
+    "version": "1.22.2",
+    "libraryName": "groupaccidentalform",
+    "libraryId": "c6bffa62-3337-4e56-b465-1856e187a1a8",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "groupaccidentalform",
+    "solutionShortDescription": "groupaccidentalform description",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart",
+    "ejected": true
+  }
+}

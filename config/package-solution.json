@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "groupaccidentalform-client-side-solution",
+    "id": "c6bffa62-3337-4e56-b465-1856e187a1a8",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.22.2"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "groupaccidentalform description"
+      },
+      "longDescription": {
+        "default": "groupaccidentalform description"
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "groupaccidentalform Feature",
+        "description": "The feature that activates elements of the groupaccidentalform solution.",
+        "id": "6a75527d-9be1-4f7c-a637-49445b061c7d",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/groupaccidentalform.sppkg"
+  }
+}
