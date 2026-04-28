@@ -587,10 +587,11 @@ const JoiningFormalities = ({
                                                         <select disabled className='form-select'>
                                                            
                                                             <option value="ICICI Bank">ICICI Bank</option>
+                                                            <option value="Hdfc Bank">HDFC Bank</option>
+
                                                             
                                                         </select>
                                                     </td>
-
                                                     <td>
                                                         <input
                                                             name="bankName"
