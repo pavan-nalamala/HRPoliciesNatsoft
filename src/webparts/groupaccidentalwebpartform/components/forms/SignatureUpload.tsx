@@ -53,8 +53,8 @@ const SignatureUpload = ({
           }
         }}
         style={{
-          minHeight: '38px',
-          height: '38px',
+          minHeight: '120px',
+          height: '120px',
           border: '1px solid #ced4da',
           borderRadius: '0.375rem',
           background: '#fff',
@@ -62,7 +62,7 @@ const SignatureUpload = ({
           alignItems: 'center',
           justifyContent: value ? 'center' : 'flex-start',
           overflow: 'hidden',
-          padding: '0.375rem 0.75rem',
+          padding: '0.75rem',
           cursor: 'pointer'
         }}
       >
@@ -72,7 +72,7 @@ const SignatureUpload = ({
             alt="Signature preview"
             style={{
               maxWidth: '100%',
-              maxHeight: '28px',
+              maxHeight: '110px',
               objectFit: 'contain'
             }}
           />

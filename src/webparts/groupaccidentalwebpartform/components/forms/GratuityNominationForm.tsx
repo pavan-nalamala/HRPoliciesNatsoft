@@ -10,6 +10,8 @@ import {
   DatePickerInput
 } from './dateFieldUtils';
 import SignatureUpload from './SignatureUpload';
+import { getSP } from '../../../../pnpjsConfig';
+import moment from 'moment';
 
 type NomineeRow = {
   fullNameAndAddress: string;
@@ -62,8 +64,37 @@ const createEmptyWitness = (): WitnessRow => ({
 const GratuityNominationForm = ({
   onComplete,
   sharedEmployeeSignature,
-  onEmployeeSignatureChange
+  onEmployeeSignatureChange,
+  context,
+  employeePFData
 }: ISequentialFormProps): JSX.Element => {
+
+  const uploadSignature = async (
+    sp: any,
+    listName: string,
+    itemId: number,
+    base64: string,
+    fileName: string
+  ) => {
+    const base64Data = base64.split(",")[1];
+
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+
+    const blob = new Blob([new Uint8Array(byteNumbers)], {
+      type: "image/png",
+    });
+
+    await sp.web.lists
+      .getByTitle(listName)
+      .items.getById(itemId)
+      .attachmentFiles.add(fileName, blob);
+  };
+
   React.useEffect(() => {
     if (!document.getElementById('bootstrap-css')) {
       const link = document.createElement('link');
@@ -155,10 +186,144 @@ const GratuityNominationForm = ({
     },
     validationSchema,
     onSubmit: async (values) => {
-      console.log('values', values);
-      onComplete?.();
-    },
+      try {
+        const sp = getSP(context);
+        const mainItem = await sp.web.lists
+          .getByTitle("GratuityNomination")
+          .items.add({
+            Title: values.employeeIntroName,
+            EmployeeName: values.employeeIntroName,
+
+            SpouseExclusionDate: values.spouseExclusionDate
+              ? moment(values.spouseExclusionDate, "DD/MM/YYYY").toISOString()
+              : null,
+
+            EmployeeStatName: values.employeeStatementNameAndAddress,
+            Sex: values.sex,
+            Religion: values.religion,
+            MaritalStatus: values.maritalStatus,
+            Department: values.departmentBranchSection,
+
+            EmployeeId: Number(values.employeeId),
+            can_id: String(employeePFData?.ID),
+            DateOfJoining: values.dateOfJoining
+              ? moment(values.dateOfJoining, "DD/MM/YYYY").toISOString()
+              : null,
+
+            PermanentAddress: values.permanentAddress,
+            Place: values.place,
+
+            // IMPORTANT: ensure correct internal name
+            FormDate0: values.date
+              ? moment(values.date, "DD/MM/YYYY").toISOString()
+              : null,
+
+            ReferenceNo: String(values.referenceNo),
+
+            EmployerCertificateDate: values.employerCertificateDate
+              ? moment(values.employerCertificateDate, "DD/MM/YYYY").toISOString()
+              : null,
+
+            Designation: values.designation,
+
+            AcknowledgmentDate: values.acknowledgmentDate
+              ? moment(values.acknowledgmentDate, "DD/MM/YYYY").toISOString()
+              : null,
+          });
+
+        const itemId = mainItem.data.Id;
+
+        // 2. Helper: convert base64 signature → Blob (if needed)
+        const dataURLtoBlob = (dataurl: string) => {
+          const arr = dataurl.split(",");
+          const mime = arr[0].match(/:(.*?);/)![1];
+          const bstr = atob(arr[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+
+          while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+          }
+
+          return new Blob([u8arr], { type: mime });
+        };
+
+        // 3. Helper: upload attachment
+        const uploadAttachment = async (fileName: string, file: any) => {
+          if (!file) return;
+
+          return sp.web.lists
+            .getByTitle("GratuityNomination")
+            .items.getById(itemId)
+            .attachmentFiles.add(fileName, file);
+        };
+
+        // 4. ATTACHMENTS (5 SIGNATURES)
+
+        await uploadAttachment(
+          "EmployeeSignature.png",
+          dataURLtoBlob(values.employeeSignature)
+        );
+
+        await uploadAttachment(
+          "Witness1Signature.png",
+          values.witnesses?.[0]?.signature ? dataURLtoBlob(values.witnesses[0].signature) : null);
+
+        await uploadAttachment(
+          "Witness2Signature.png",
+          values.witnesses?.[1]?.signature ? dataURLtoBlob(values.witnesses[1].signature) : null
+        );
+
+        await uploadAttachment(
+          "AuthorizedSignature.png",
+          dataURLtoBlob(values.authorizedSignature)
+        );
+
+        await uploadAttachment(
+          "acknowledgmentEmployeeSignature.png",
+          dataURLtoBlob(values.acknowledgmentEmployeeSignature)
+        );
+
+        // 5. SAVE NOMINEES
+        if (values.nominees?.length) {
+          for (const n of values.nominees) {
+            if (!n.fullNameAndAddress) continue;
+
+            await sp.web.lists
+              .getByTitle("GratuityNominees")
+              .items.add({
+                ParentID: itemId,
+                FullNameAndAddress: n.fullNameAndAddress,
+                Relationship: n.relationship,
+                Age: Number(n.age),
+                SharePercentage: Number(n.sharePercentage),
+              });
+          }
+        }
+
+        // 6. SAVE WITNESSES
+        if (values.witnesses?.length) {
+          for (const w of values.witnesses) {
+            if (!w.nameAndAddress) continue;
+
+            await sp.web.lists
+              .getByTitle("GratuityWitnesses")
+              .items.add({
+                ParentID: itemId,
+                NameAndAddress: w.nameAndAddress,
+              });
+          }
+        }
+
+        onComplete?.();
+      } catch (error) {
+        console.error("Submit Error:", error);
+        alert("Submission failed");
+      }
+    }
   });
+
+
 
   React.useEffect(() => {
     if (!sharedEmployeeSignature) {
@@ -192,7 +357,6 @@ const GratuityNominationForm = ({
                 GRATUITY NOMINATION FORM
               </h3>
             </div>
-
             <div className="mb-4">
               <p className="mb-1 fw-bold">To</p>
               <p className="mb-1">NAT IT Services Pvt Ltd</p>
@@ -266,19 +430,52 @@ const GratuityNominationForm = ({
 
               <div className="d-flex justify-content-between align-items-center">
                 <h5 style={headerStyle} className="mb-0">Nominee Details</h5>
-                <Button
-                  type="button"
-                  className="border-0"
-                  style={{ backgroundColor: '#f18200' }}
-                  onClick={() => {
-                    formik
-                      .setFieldValue('nominees', [...formik.values.nominees, createEmptyNominee()])
-                      .catch(() => undefined);
-                  }}
-                >
-                  Add One More
-                </Button>
+                {formik.values.nominees.length < 4 && (
+                  <div>
+                    <Button
+                      type="button"
+                      className="border-0"
+                      style={{ backgroundColor: '#f18200' }}
+                      disabled={
+                        !formik.values.nominees[
+                          formik.values.nominees.length - 1
+                        ]?.fullNameAndAddress?.trim() ||
+                        !formik.values.nominees[
+                          formik.values.nominees.length - 1
+                        ]?.relationship?.trim() ||
+                        !formik.values.nominees[
+                          formik.values.nominees.length - 1
+                        ]?.sharePercentage
+                      }
+                      onClick={() => {
+                        formik
+                          .setFieldValue('nominees', [
+                            ...formik.values.nominees,
+                            createEmptyNominee(),
+                          ])
+                          .catch(() => undefined);
+                      }}
+                    >
+                      Add One More
+                    </Button>
+
+                    {(!formik.values.nominees[
+                      formik.values.nominees.length - 1
+                    ]?.fullNameAndAddress?.trim() ||
+                      !formik.values.nominees[
+                        formik.values.nominees.length - 1
+                      ]?.relationship?.trim() ||
+                      !formik.values.nominees[
+                        formik.values.nominees.length - 1
+                      ]?.sharePercentage) && (
+                        <p className="text-danger small mt-1 mb-0">
+                          Please fill current nominee details before adding another nominee.
+                        </p>
+                      )}
+                  </div>
+                )}
               </div>
+
 
               <Table bordered responsive className="mt-3 text-center align-middle">
                 <thead className="table-light">
@@ -302,13 +499,18 @@ const GratuityNominationForm = ({
 
                         <td>
                           <Form.Control
-                            name={`nominees[${index}].fullNameAndAddress`}
                             as="textarea"
-                            rows={2}
-                            placeholder="Enter Details"
+                            rows={1}
+                            name={`nominees[${index}].fullNameAndAddress`}
+                            placeholder="Full Name & Address"
                             value={nominee.fullNameAndAddress}
-                            onChange={formik.handleChange}
+                            onChange={(e) => {
+                              formik.handleChange(e);
+                              e.target.style.height = "auto";
+                              e.target.style.height = e.target.scrollHeight + "px";
+                            }}
                             onBlur={formik.handleBlur}
+                            style={{ overflow: "hidden", resize: "none" }}
                           />
                           {typeof touchedNominee === 'object' &&
                             touchedNominee?.fullNameAndAddress &&
@@ -355,23 +557,82 @@ const GratuityNominationForm = ({
                               </p>
                             )}
                         </td>
-
                         <td>
-                          <Form.Control
-                            name={`nominees[${index}].sharePercentage`}
-                            placeholder="%"
-                            value={nominee.sharePercentage}
-                            onChange={formik.handleChange}
-                            onBlur={formik.handleBlur}
-                          />
-                          {typeof touchedNominee === 'object' &&
-                            touchedNominee?.sharePercentage &&
-                            typeof errorNominee === 'object' &&
-                            errorNominee?.sharePercentage && (
-                              <p className="text-danger small mb-0 text-start">
-                                {errorNominee.sharePercentage}
-                              </p>
+                          <div className="d-flex gap-2 align-items-start">
+                            <div className="w-100">
+                              <Form.Control
+                                name={`nominees[${index}].sharePercentage`}
+                                placeholder="%"
+                                value={nominee.sharePercentage}
+                                onChange={(e) => {
+                                  let value = e.target.value.replace(/[^0-9]/g, '');
+
+                                  // Prevent above 100 for single field
+                                  if (Number(value) > 100) {
+                                    value = '100';
+                                  }
+
+                                  // Clone nominees
+                                  const updatedNominees = [...formik.values.nominees];
+                                  updatedNominees[index].sharePercentage = value;
+
+                                  // Calculate total
+                                  const total = updatedNominees.reduce(
+                                    (sum, item) => sum + Number(item.sharePercentage || 0),
+                                    0
+                                  );
+
+                                  if (total <= 100) {
+                                    formik.setFieldError(
+                                      `nominees[${index}].sharePercentage`,
+                                      ''
+                                    );
+
+                                    formik
+                                      .setFieldValue(
+                                        `nominees[${index}].sharePercentage`,
+                                        value
+                                      )
+                                      .catch(() => undefined);
+                                  } else {
+                                    formik.setFieldError(
+                                      `nominees[${index}].sharePercentage`,
+                                      'Total share percentage cannot exceed 100%'
+                                    );
+                                  }
+                                }}
+                                onBlur={formik.handleBlur}
+                              />
+
+                              {typeof touchedNominee === 'object' &&
+                                touchedNominee?.sharePercentage &&
+                                typeof errorNominee === 'object' &&
+                                errorNominee?.sharePercentage && (
+                                  <p className="text-danger small mb-0 text-start">
+                                    {errorNominee.sharePercentage}
+                                  </p>
+                                )}
+                            </div>
+
+                            {/* Remove Button */}
+                            {formik.values.nominees.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="danger"
+                                onClick={() => {
+                                  const updatedNominees = formik.values.nominees.filter(
+                                    (_, i) => i !== index
+                                  );
+
+                                  formik
+                                    .setFieldValue('nominees', updatedNominees)
+                                    .catch(() => undefined);
+                                }}
+                              >
+                                Remove
+                              </Button>
                             )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -411,6 +672,8 @@ const GratuityNominationForm = ({
                     <option value="">Select</option>
                     <option>Male</option>
                     <option>Female</option>
+                    <option>Others</option>
+
                   </Form.Select>
                   {formik.touched.sex && formik.errors.sex && (
                     <p className="text-danger small mb-0">{formik.errors.sex}</p>
@@ -419,12 +682,18 @@ const GratuityNominationForm = ({
 
                 <Col md={4}>
                   <Form.Label>Religion</Form.Label>
-                  <Form.Control
+                  <Form.Select
                     name="religion"
                     value={formik.values.religion}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
-                  />
+                  >
+                    <option value="">Select</option>
+
+                    <option>Hindu </option>
+                    <option>Muslim </option>
+                    <option>Christian</option>
+                  </Form.Select>
                   {formik.touched.religion && formik.errors.religion && (
                     <p className="text-danger small mb-0">{formik.errors.religion}</p>
                   )}
@@ -439,10 +708,10 @@ const GratuityNominationForm = ({
                     onBlur={formik.handleBlur}
                   >
                     <option value="">Select</option>
-                    <option>Married</option>
-                    <option>Unmarried</option>
-                    <option>Widow</option>
-                    <option>Widower</option>
+                    <option>Single</option>
+                    <option>Married </option>
+                    <option>divorce</option>
+                    <option>widow</option>
                   </Form.Select>
                   {formik.touched.maritalStatus && formik.errors.maritalStatus && (
                     <p className="text-danger small mb-0">{formik.errors.maritalStatus}</p>
@@ -472,6 +741,7 @@ const GratuityNominationForm = ({
                     value={formik.values.employeeId}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
+                    disabled={employeePFData?.EmailID !== 'hr@natit.in'}
                   />
                   {formik.touched.employeeId && formik.errors.employeeId && (
                     <p className="text-danger small mb-0">{formik.errors.employeeId}</p>
@@ -494,13 +764,20 @@ const GratuityNominationForm = ({
                 <Col md={12}>
                   <Form.Label>Permanent Address</Form.Label>
                   <Form.Control
-                    name="permanentAddress"
                     as="textarea"
-                    rows={2}
+                    rows={1}
+                    name="permanentAddress"
+                    placeholder="Permanent Address"
                     value={formik.values.permanentAddress}
-                    onChange={formik.handleChange}
+                    onChange={(e) => {
+                      formik.handleChange(e);
+                      e.target.style.height = "auto";
+                      e.target.style.height = e.target.scrollHeight + "px";
+                    }}
                     onBlur={formik.handleBlur}
+                    style={{ overflow: "hidden", resize: "none" }}
                   />
+
                   {formik.touched.permanentAddress && formik.errors.permanentAddress && (
                     <p className="text-danger small mb-0">{formik.errors.permanentAddress}</p>
                   )}

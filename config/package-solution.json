@@ -32,9 +32,16 @@
         "id": "6a75527d-9be1-4f7c-a637-49445b061c7d",
         "version": "1.0.0.0"
       }
-    ]
+    ],
+    "webApiPermissionRequests": [
+  {
+    "resource": "Microsoft Graph",
+    "scope": "User.Read"
+  }
+]
   },
   "paths": {
     "zippedPackage": "solution/groupaccidentalform.sppkg"
   }
+  
 }

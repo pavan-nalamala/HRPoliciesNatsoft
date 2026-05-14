@@ -1,16 +1,15 @@
 import * as React from 'react';
 import * as ReactDom from 'react-dom';
-import { Version } from '@microsoft/sp-core-library';
 import {
   type IPropertyPaneConfiguration,
   PropertyPaneTextField
 } from '@microsoft/sp-property-pane';
 import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
-import { IReadonlyTheme } from '@microsoft/sp-component-base';
 
 import strings from 'GroupaccidentalwebpartformWebPartStrings';
 import Groupaccidentalwebpartform from './components/Groupaccidentalwebpartform';
 import { IGroupaccidentalwebpartformProps } from './components/IGroupaccidentalwebpartformProps';
+import { IReadonlyTheme } from '@microsoft/sp-component-base';
 
 export interface IGroupaccidentalwebpartformWebPartProps {
   description: string;
@@ -29,7 +28,10 @@ export default class GroupaccidentalwebpartformWebPart extends BaseClientSideWeb
         isDarkTheme: this._isDarkTheme,
         environmentMessage: this._environmentMessage,
         hasTeamsContext: !!this.context.sdks.microsoftTeams,
-        userDisplayName: this.context.pageContext.user.displayName
+        userDisplayName: this.context.pageContext.user.displayName,
+        spHttpClient: this.context.spHttpClient,
+        siteUrl: this.context.pageContext.web.absoluteUrl,
+        context: this.context
       }
     );
 
@@ -91,10 +93,6 @@ export default class GroupaccidentalwebpartformWebPart extends BaseClientSideWeb
 
   protected onDispose(): void {
     ReactDom.unmountComponentAtNode(this.domElement);
-  }
-
-  protected get dataVersion(): Version {
-    return Version.parse('1.0');
   }
 
   protected getPropertyPaneConfiguration(): IPropertyPaneConfiguration {

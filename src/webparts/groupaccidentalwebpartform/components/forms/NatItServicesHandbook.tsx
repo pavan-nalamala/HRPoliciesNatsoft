@@ -10,12 +10,57 @@ import {
   Alert
 } from 'react-bootstrap';
 import type { ISequentialFormProps } from './ISequentialFormProps';
-
-const HANDBOOK_PDF_URL = 'https://natitin.sharepoint.com/sites/NatIt_HRRecruitment/Shared%20Documents/JoiningFormalitiesDocuments/NAT%20IT%20SERVICES_Hand%20book.pdf';
-
-const NatItServicesHandbook = ({ onComplete }: ISequentialFormProps): JSX.Element => {
+const NatItServicesHandbook = ({ onComplete, employeePFData }: ISequentialFormProps & { employeePFData: any }): JSX.Element => {
   const [agreed, setAgreed] = useState(false);
-
+  const [loading, setLoading] = useState(false);
+  const HANDBOOK_FOLDER_URL =
+    "https://natitin.sharepoint.com/sites/NatIt_HRRecruitment/Shared%20Documents/JoiningFormalitiesDocuments/NAT%20IT%20SERVICES_Hand%20book.pdf";
+  React.useEffect(() => {
+    if (employeePFData) {
+      console.log(employeePFData);
+    }
+  }, [employeePFData]);
+  const submitAcknowledgement = async () => {
+    setLoading(true);
+    try {
+      const siteUrl = "https://natitin.sharepoint.com/sites/NatIt_HRRecruitment";
+      const digestRes = await fetch(`${siteUrl}/_api/contextinfo`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json;odata=nometadata"
+        }
+      });
+      const digestData = await digestRes.json();
+      const response = await fetch(
+        `${siteUrl}/_api/web/lists/getbytitle('EmployeeHandBook')/items`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json;odata=nometadata",
+            "Content-Type": "application/json;odata=nometadata",
+            "X-RequestDigest": digestData.FormDigestValue
+          },
+          body: JSON.stringify({
+            Title: "Employee Handbook Acknowledgement",
+            employee_name: employeePFData?.Title || "Unknown",
+            acknowledgement_flag: true,
+            acknowledgement_time: new Date().toISOString(),
+            can_id: String(employeePFData?.ID)
+          })
+        }
+      );
+      if (!response.ok) {
+        const err = await response.text();
+        console.error("SharePoint Error:", err);
+        throw new Error(err);
+      }
+      onComplete?.();
+    } catch (error) {
+      console.error("Submit failed:", error);
+      alert("Submission failed");
+    }
+    setLoading(false);
+  };
   useEffect(() => {
     if (!document.getElementById('bootstrap-css')) {
       const link = document.createElement('link');
@@ -26,54 +71,32 @@ const NatItServicesHandbook = ({ onComplete }: ISequentialFormProps): JSX.Elemen
       document.head.appendChild(link);
     }
   }, []);
-
   return (
     <>
       <FormSection title="NAT IT Services_Handbook" />
-
       <div className="p-3 bg-light">
         <Card className="shadow border-0 rounded-4 mx-auto">
-
-          {/* Header */}
           <Card.Header
             className="text-white fw-bold fs-4 text-center py-3 border-0"
             style={{ backgroundColor: '#f18200' }}
           >
             NAT IT Services - Employee Handbook
           </Card.Header>
-
           <Card.Body className="p-4">
-
-            {/* Info Alert */}
-            <Alert
-              variant="light"
-              className="border rounded-3 mb-4"
-            >
+            <Alert variant="light" className="border rounded-3 mb-4">
               Please review the Employee Handbook carefully before continuing.
-              You must accept the handbook acknowledgment.
             </Alert>
-
-            {/* PDF Viewer */}
-            <div
-              className="border rounded-4 overflow-hidden shadow-sm mb-4"
-              style={{ backgroundColor: '#fff' }}
-            >
+            <div className="border rounded-4 overflow-hidden shadow-sm mb-4">
               <iframe
-                title="NAT IT Services Handbook"
-                src={HANDBOOK_PDF_URL}
-                style={{
-                  width: '100%',
-                  height: '500px',
-                  border: 'none'
-                }}
+                title="Employee Handbook"
+                src={HANDBOOK_FOLDER_URL}
+                style={{ width: '100%', height: '500px', border: 'none' }}
               />
             </div>
-
           </Card.Body>
         </Card>
       </div>
-
-      {/* Fixed Bottom Bar */}
+      {/* Bottom Bar */}
       <div
         style={{
           position: 'fixed',
@@ -81,47 +104,36 @@ const NatItServicesHandbook = ({ onComplete }: ISequentialFormProps): JSX.Elemen
           left: 0,
           width: '100%',
           zIndex: 1050,
-          background: '#ffffff',
+          background: '#fff',
           borderTop: '1px solid #dee2e6',
-          boxShadow: '0 -4px 12px rgba(0,0,0,0.08)',
           padding: '12px 20px'
         }}
       >
-        <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-          <Row className="align-items-center g-3">
-            <Col md={8}>
-              <Form.Check
-                type="checkbox"
-                id="agreeCheck"
-                label="I have read and understood the NAT IT Services Employee Handbook."
-                checked={agreed}
-                onChange={(e) => setAgreed(e.target.checked)}
-                className="fw-medium"
-              />
-            </Col>
-
-            <Col md={4} className="text-md-end text-start">
-              <Button
-                size="lg"
-                disabled={!agreed}
-                onClick={() => onComplete?.()}
-                style={{
-                  backgroundColor: agreed ? '#f18200' : '#adb5bd',
-                  border: 'none',
-                  minWidth: '180px'
-                }}
-              >
-                Continue
-              </Button>
-            </Col>
-          </Row>
-        </div>
+        <Row className="align-items-center">
+          <Col md={8}>
+            <Form.Check
+              type="checkbox"
+              label="I have read and understood the Employee Handbook."
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+            />
+          </Col>
+          <Col md={4} className="text-end">
+            <Button
+              disabled={!agreed || loading}
+              onClick={submitAcknowledgement}
+              style={{
+                backgroundColor: agreed ? '#f18200' : '#adb5bd',
+                border: 'none',
+                minWidth: '180px'
+              }}
+            >
+              {loading ? "Submitting..." : "Continue"}
+            </Button>
+          </Col>
+        </Row>
       </div>
-
-      {/* Bottom Space */}
-      {/* <div style={{ height: '100px' }}></div> */}
     </>
   );
 };
-
 export default NatItServicesHandbook;

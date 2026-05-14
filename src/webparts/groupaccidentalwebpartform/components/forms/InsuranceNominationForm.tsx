@@ -1,13 +1,6 @@
 import * as React from 'react';
 import FormSection from './FormSection';
-import {
-  Card,
-  Form,
-  Row,
-  Col,
-  Table,
-  Button
-} from 'react-bootstrap';
+import { Form, Row, Col, Table, Card, Button } from 'react-bootstrap';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import type { ISequentialFormProps } from './ISequentialFormProps';
@@ -17,7 +10,8 @@ import {
   DatePickerInput
 } from './dateFieldUtils';
 import SignatureUpload from './SignatureUpload';
-
+import moment from 'moment';
+import { getSP } from '../../../../pnpjsConfig';
 type NomineeRow = {
   nomineeNameAndAddress: string;
   relationship: string;
@@ -25,8 +19,7 @@ type NomineeRow = {
   shareAmount: string;
   guardianDetails: string;
 };
-
-type InsuranceNominationValues = {
+type InsuranceNominationFormValues = {
   employeeName: string;
   fatherOrHusbandName: string;
   dateOfBirth: string;
@@ -38,9 +31,8 @@ type InsuranceNominationValues = {
   nominees: NomineeRow[];
   place: string;
   date: string;
-  employeeSignature: string;
+  signature: string;
 };
-
 const createEmptyNominee = (): NomineeRow => ({
   nomineeNameAndAddress: '',
   relationship: '',
@@ -48,11 +40,12 @@ const createEmptyNominee = (): NomineeRow => ({
   shareAmount: '',
   guardianDetails: '',
 });
-
 const InsuranceNominationForm = ({
   onComplete,
   sharedEmployeeSignature,
-  onEmployeeSignatureChange
+  onEmployeeSignatureChange,
+  context,
+  employeePFData
 }: ISequentialFormProps): JSX.Element => {
   React.useEffect(() => {
     if (!document.getElementById('bootstrap-css')) {
@@ -64,43 +57,73 @@ const InsuranceNominationForm = ({
       document.head.appendChild(link);
     }
   }, []);
-
-  const headerStyle = {
-    backgroundColor: '#f18200',
-    color: '#fff',
-    padding: '10px 15px',
-    borderRadius: '8px',
-    fontWeight: 600
-  };
-
   const validationSchema = Yup.object().shape({
-    employeeName: Yup.string().required('Employee Name is required'),
-    fatherOrHusbandName: Yup.string().required('Father / Husband Name is required'),
-    dateOfBirth: createDateValidation('Date of Birth is required', 'Date of Birth must be in DD/MM/YYYY format'),
+    employeeName: Yup.string().required('Name of the Employee is required'),
+    fatherOrHusbandName: Yup.string().required("Father's / Husband's Name is required"),
+    dateOfBirth: createDateValidation('Date of Birth is required', 'Date of Birth must be in DD/MM/YYYY format')
+      .test(
+        'dob-age-validation',
+        'Minimum age must be 18 years',
+        function (value) {
+          if (!value) return true;
+          const [day, month, year] = value.split('/');
+          const dob = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          const today = new Date();
+          const age = today.getFullYear() - dob.getFullYear();
+          const monthDiff = today.getMonth() - dob.getMonth();
+          const dayDiff = today.getDate() - dob.getDate();
+          const actualAge = monthDiff < 0 || (monthDiff === 0 && dayDiff < 0) ? age - 1 : age;
+          return actualAge >= 18;
+        }
+      ),
     sex: Yup.string().required('Sex is required'),
-    employeeId: Yup.string().required('EMP ID is required'),
+    employeeId: Yup.string(),
     address: Yup.string().required('Address is required'),
-    declarationEmployeeName: Yup.string().required('Declaration employee name is required'),
+    declarationEmployeeName: Yup.string().required('Employee name is required'),
     declarationDate: createDateValidation('Declaration date is required', 'Declaration date must be in DD/MM/YYYY format'),
     nominees: Yup.array()
       .of(
         Yup.object().shape({
-          nomineeNameAndAddress: Yup.string().required('Nominee Name & Address is required'),
+          nomineeNameAndAddress: Yup.string().required('Nominee name and address is required'),
           relationship: Yup.string().required('Relationship is required'),
-          dateOfBirth: createDateValidation('Nominee Date of Birth is required', 'Nominee Date of Birth must be in DD/MM/YYYY format'),
-          shareAmount: Yup.string()
-            .required('Share Amount is required')
-            .matches(/^\d+(\.\d+)?$/, 'Share Amount must be a valid number'),
-          guardianDetails: Yup.string().required('Guardian Details is required'),
+          dateOfBirth: createDateValidation('Nominee date of birth is required', 'Nominee date of birth must be in DD/MM/YYYY format')
+            .test(
+              'nominee-dob-age-validation',
+              'Minimum age must be 18 years',
+              function (value) {
+                if (!value) return true;
+                const [day, month, year] = value.split('/');
+                const dob = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                const today = new Date();
+                const age = today.getFullYear() - dob.getFullYear();
+                const monthDiff = today.getMonth() - dob.getMonth();
+                const dayDiff = today.getDate() - dob.getDate();
+                const actualAge = monthDiff < 0 || (monthDiff === 0 && dayDiff < 0) ? age - 1 : age;
+                return actualAge >= 18;
+              }
+            ),
+          shareAmount: Yup.string().required('Share amount is required'),
+          guardianDetails: Yup.string().required('Guardian details is required'),
         })
       )
-      .min(1, 'At least one nominee is required'),
+      .min(1, 'At least one nominee is required')
+      .test(
+        'total-share-100',
+        'Share % across nominees must total exactly 100%',
+        function (nominees) {
+          if (!Array.isArray(nominees) || nominees.length === 0) return true;
+          const total = nominees.reduce((sum, nominee) => {
+            const share = parseFloat(nominee.shareAmount) || 0;
+            return sum + share;
+          }, 0);
+          return total === 100;
+        }
+      ),
     place: Yup.string().required('Place is required'),
     date: createDateValidation('Date is required', 'Date must be in DD/MM/YYYY format'),
-    employeeSignature: Yup.string().required('Employee Signature is required'),
+    signature: Yup.string().required('Signature of Employee is required'),
   });
-
-  const formik = useFormik<InsuranceNominationValues>({
+  const formik = useFormik<InsuranceNominationFormValues>({
     initialValues: {
       employeeName: '',
       fatherOrHusbandName: '',
@@ -113,25 +136,76 @@ const InsuranceNominationForm = ({
       nominees: [createEmptyNominee()],
       place: '',
       date: '',
-      employeeSignature: '',
+      signature: '',
     },
     validationSchema,
     onSubmit: async (values) => {
-      console.log('values', values);
-      onComplete?.();
-    },
+      try {
+        const sp = getSP(context);
+        const response = await sp.web.lists
+          .getByTitle("PersonalAccidentalScheme")
+          .items.add({
+            Title: values.employeeName,
+            EmployeeName: values.employeeName,
+            FatherName: values.fatherOrHusbandName,
+            DOB: moment(values.dateOfBirth, 'DD/MM/YYYY').toISOString(),
+            Gender: values.sex,
+            EmployeeID: Number(values.employeeId || null),
+            Address: values.address,
+            DeclarationDate: moment(values.declarationDate, 'DD/MM/YYYY').toISOString(),
+            Place: values.place
+          });
+        const parentId = response?.data?.Id;
+        const itemId = response.data.Id;
+        if (values.signature) {
+          const base64 = values.signature.split(",")[1];
+          const byteCharacters = atob(base64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const blob = new Blob([new Uint8Array(byteNumbers)], { type: "image/png" });
+          await sp.web.lists
+            .getByTitle("PersonalAccidentalScheme")
+            .items.getById(itemId)
+            .attachmentFiles.add("PersonalAccidentalSchemeSignature.png", blob);
+        }
+        if (Array.isArray(values.nominees)) {
+          for (const nominee of values.nominees) {
+            if (!nominee.nomineeNameAndAddress) continue;
+            await sp.web.lists.getByTitle("PersonalAccidentalSchemeNominees").items.add({
+              Title: values.employeeName,
+              ParentID: parentId,
+              NomineeName: nominee.nomineeNameAndAddress,
+              Relationship: nominee.relationship,
+              DOB: moment(nominee.dateOfBirth, 'DD/MM/YYYY').toISOString(),
+              ShareAmount: Number(nominee.shareAmount),
+              GuardianDetails: nominee.guardianDetails
+            });
+          }
+        }
+        onComplete?.();
+      } catch (error) {
+        console.error("Submit Error:", error);
+        alert("Submission failed");
+      }
+    }
   });
-
+  const headerStyle = {
+    backgroundColor: '#f18200',
+    color: '#fff',
+    padding: '10px 15px',
+    borderRadius: '8px',
+    fontWeight: 600
+  };
   React.useEffect(() => {
-    if (sharedEmployeeSignature && formik.values.employeeSignature !== sharedEmployeeSignature) {
-      formik.setFieldValue('employeeSignature', sharedEmployeeSignature).catch(() => undefined);
+    if (sharedEmployeeSignature && formik.values.signature !== sharedEmployeeSignature) {
+      formik.setFieldValue('signature', sharedEmployeeSignature).catch(() => undefined);
     }
   }, [sharedEmployeeSignature]);
-
   return (
     <>
-      <FormSection title="Insurance Nomination Form" />
-
+      <FormSection title="InsuranceNominationForm" />
       <div>
         <Card className="shadow border-0 rounded-4 mx-auto">
           <Card.Body className="p-4 p-md-5">
@@ -140,10 +214,9 @@ const InsuranceNominationForm = ({
                 className="fw-bold text-white py-2 rounded"
                 style={{ backgroundColor: '#f18200' }}
               >
-                NOMINATION FORM FOR TERM LIFE INSURANCE
+                NOMINATION FORM FOR GROUP PERSONAL ACCIDENTAL SCHEME
               </h3>
             </div>
-
             <div className="mb-4">
               <p className="mb-1 fw-bold">TO</p>
               <p className="mb-1 fw-semibold">NAT IT Services Pvt Ltd</p>
@@ -152,39 +225,42 @@ const InsuranceNominationForm = ({
                 500032
               </p>
             </div>
-
             <Form onSubmit={formik.handleSubmit}>
-              <h5 style={headerStyle}>Employee Details</h5>
-
-              <Row className="g-3 mt-2">
-                <Col md={6}>
-                  <Form.Label>1. Employee Name</Form.Label>
-                  <Form.Control
-                    name="employeeName"
-                    placeholder="Enter Full Name"
-                    value={formik.values.employeeName}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                  />
-                  {formik.touched.employeeName && formik.errors.employeeName && (
-                    <p className="text-danger small mb-0">{formik.errors.employeeName}</p>
-                  )}
-                </Col>
-
-                <Col md={6}>
-                  <Form.Label>2. Father / Husband Name</Form.Label>
-                  <Form.Control
-                    name="fatherOrHusbandName"
-                    placeholder="Enter Name"
-                    value={formik.values.fatherOrHusbandName}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                  />
-                  {formik.touched.fatherOrHusbandName && formik.errors.fatherOrHusbandName && (
-                    <p className="text-danger small mb-0">{formik.errors.fatherOrHusbandName}</p>
-                  )}
-                </Col>
-
+              <h5
+                className="text-white p-2 rounded mb-3"
+                style={{ backgroundColor: '#f18200' }}
+              >
+                Employee Details
+              </h5>
+              <Form.Group className="mb-3">
+                <Form.Label>1. Name of the Employee</Form.Label>
+                <Form.Control
+                  name="employeeName"
+                  type="text"
+                  placeholder="Enter Full Name"
+                  value={formik.values.employeeName}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                />
+                {formik.touched.employeeName && formik.errors.employeeName && (
+                  <p className="text-danger small mb-0">{formik.errors.employeeName}</p>
+                )}
+              </Form.Group>
+              <Form.Group className="mb-3">
+                <Form.Label>2. Father&apos;s / Husband&apos;s Name</Form.Label>
+                <Form.Control
+                  name="fatherOrHusbandName"
+                  type="text"
+                  placeholder="Enter Name"
+                  value={formik.values.fatherOrHusbandName}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                />
+                {formik.touched.fatherOrHusbandName && formik.errors.fatherOrHusbandName && (
+                  <p className="text-danger small mb-0">{formik.errors.fatherOrHusbandName}</p>
+                )}
+              </Form.Group>
+              <Row className="g-3 mb-3">
                 <Col md={4}>
                   <Form.Label>3. Date of Birth</Form.Label>
                   <DatePickerInput
@@ -197,7 +273,6 @@ const InsuranceNominationForm = ({
                     <p className="text-danger small mb-0">{formik.errors.dateOfBirth}</p>
                   )}
                 </Col>
-
                 <Col md={4}>
                   <Form.Label>4. Sex</Form.Label>
                   <Form.Select
@@ -209,146 +284,162 @@ const InsuranceNominationForm = ({
                     <option value="">Select</option>
                     <option>Male</option>
                     <option>Female</option>
-                    <option>Other</option>
+                    <option>Others</option>
                   </Form.Select>
                   {formik.touched.sex && formik.errors.sex && (
                     <p className="text-danger small mb-0">{formik.errors.sex}</p>
                   )}
                 </Col>
-
                 <Col md={4}>
                   <Form.Label>5. EMP ID</Form.Label>
                   <Form.Control
                     name="employeeId"
+                    type="text"
                     placeholder="Enter ID"
                     value={formik.values.employeeId}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
+                    disabled={employeePFData?.EmailID !== 'hr@natit.in'}
                   />
-                  {formik.touched.employeeId && formik.errors.employeeId && (
-                    <p className="text-danger small mb-0">{formik.errors.employeeId}</p>
-                  )}
-                </Col>
-
-                <Col md={12}>
-                  <Form.Label>6. Address</Form.Label>
-                  <Form.Control
-                    name="address"
-                    as="textarea"
-                    rows={3}
-                    placeholder="Enter Address"
-                    value={formik.values.address}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                  />
-                  {formik.touched.address && formik.errors.address && (
-                    <p className="text-danger small mb-0">{formik.errors.address}</p>
-                  )}
                 </Col>
               </Row>
-
-              <h5 style={headerStyle} className="mt-4">
+              <Form.Group className="mb-4">
+                <Form.Label>6. Address</Form.Label>
+                <Form.Control
+                  name="address"
+                  as="textarea"
+                  rows={3}
+                  placeholder="Enter Address"
+                  value={formik.values.address}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                />
+                {formik.touched.address && formik.errors.address && (
+                  <p className="text-danger small mb-0">{formik.errors.address}</p>
+                )}
+              </Form.Group>
+              <h5
+                className="text-white p-2 rounded mb-3"
+                style={{ backgroundColor: '#f18200' }}
+              >
                 Declaration
               </h5>
-
-              <Card className="border-0 bg-light mt-3">
-                <Card.Body>
-                  <div className="d-flex flex-wrap gap-2 align-items-start">
-                    <span className="mt-2">I,</span>
-
-                    <div>
-                      <Form.Control
-                        name="declarationEmployeeName"
-                        style={{ width: '220px' }}
-                        placeholder="Employee Name"
-                        value={formik.values.declarationEmployeeName}
-                        onChange={formik.handleChange}
+              <div className="border rounded p-3 bg-light mb-4">
+                <div className="d-flex flex-wrap align-items-start gap-2">
+                  <span className="mt-2">I,</span>
+                  <div>
+                    <Form.Control
+                      name="declarationEmployeeName"
+                      type="text"
+                      style={{ width: '220px' }}
+                      placeholder="Employee Name"
+                      value={formik.values.declarationEmployeeName}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+                    />
+                    {formik.touched.declarationEmployeeName &&
+                      formik.errors.declarationEmployeeName && (
+                        <p className="text-danger small mb-0">
+                          {formik.errors.declarationEmployeeName}
+                        </p>
+                      )}
+                  </div>
+                  <span className="mt-2">am employed with the above organization since</span>
+                  <div>
+                    <div style={{ width: '220px' }}>
+                      <DatePickerInput
+                        name="declarationDate"
+                        value={formik.values.declarationDate}
+                        onValueChange={createDateValueChangeHandler(formik.setFieldValue, 'declarationDate')}
                         onBlur={formik.handleBlur}
                       />
-                      {formik.touched.declarationEmployeeName &&
-                        formik.errors.declarationEmployeeName && (
-                          <p className="text-danger small mb-0">
-                            {formik.errors.declarationEmployeeName}
-                          </p>
-                        )}
                     </div>
-
-                    <span className="mt-2">
-                      am employed with the above organization since
-                    </span>
-
-                    <div>
-                      <div style={{ width: '220px' }}>
-                        <DatePickerInput
-                          name="declarationDate"
-                          value={formik.values.declarationDate}
-                          onValueChange={createDateValueChangeHandler(formik.setFieldValue, 'declarationDate')}
-                          onBlur={formik.handleBlur}
-                        />
-                      </div>
-                      {formik.touched.declarationDate && formik.errors.declarationDate && (
-                        <p className="text-danger small mb-0">{formik.errors.declarationDate}</p>
-                      )}
-                    </div>
+                    {formik.touched.declarationDate && formik.errors.declarationDate && (
+                      <p className="text-danger small mb-0">{formik.errors.declarationDate}</p>
+                    )}
                   </div>
-
-                  <p className="mt-3 mb-0">
-                    I hereby nominate the person(s) mentioned below who is/are member(s) of
-                    my family, and confer on them the right to receive the amount payable
-                    under the policy.
-                  </p>
-                </Card.Body>
-              </Card>
-
-              <div className="d-flex justify-content-between align-items-center mt-4">
-                <h5 style={headerStyle} className="mb-0">
-                  Nominee Details
-                </h5>
-                <Button
-                  type="button"
-                  className="border-0"
-                  style={{ backgroundColor: '#f18200' }}
-                  onClick={() => {
-                    formik
-                      .setFieldValue('nominees', [...formik.values.nominees, createEmptyNominee()])
-                      .catch(() => undefined);
-                  }}
-                >
-                  Add One More
-                </Button>
+                </div>
+                <p className="mt-3 mb-0">
+                  I hereby nominate the person(s) mentioned below who is/are member(s) of my
+                  family, and confer on him/them the right to receive, to the extent specified
+                  below any amount that may be sanctioned by the NAT IT Services Pvt Ltd Group
+                  Term Life Insurance in the event of my death while in service in NAT IT
+                  Services Pvt Ltd.
+                </p>
               </div>
-
-              <Table
-                bordered
-                responsive
-                className="mt-3 text-center align-middle"
-              >
+              <div className="d-flex justify-content-between align-items-center">
+                <h5 style={headerStyle} className="mb-0">Nominee Details</h5>
+                {formik.values.nominees.length < 4 && (
+                  <div>
+                    <Button
+                      type="button"
+                      className="border-0"
+                      style={{ backgroundColor: '#f18200' }}
+                      disabled={
+                        !formik.values.nominees[
+                          formik.values.nominees.length - 1
+                        ]?.nomineeNameAndAddress?.trim() ||
+                        !formik.values.nominees[
+                          formik.values.nominees.length - 1
+                        ]?.relationship?.trim() ||
+                        !formik.values.nominees[
+                          formik.values.nominees.length - 1
+                        ]?.nomineeNameAndAddress
+                      }
+                      onClick={() => {
+                        formik
+                          .setFieldValue('nominees', [
+                            ...formik.values.nominees,
+                            createEmptyNominee(),
+                          ])
+                          .catch(() => undefined);
+                      }}
+                    >
+                      Add One More
+                    </Button>
+                    {(!formik.values.nominees[
+                      formik.values.nominees.length - 1
+                    ]?.nomineeNameAndAddress?.trim() ||
+                      !formik.values.nominees[
+                        formik.values.nominees.length - 1
+                      ]?.relationship?.trim() ||
+                      !formik.values.nominees[
+                        formik.values.nominees.length - 1
+                      ]?.shareAmount) && (
+                        <p className="text-danger small mt-1 mb-0">
+                          Please fill current nominee details before adding another nominee.
+                        </p>
+                      )}
+                  </div>
+                )}
+              </div>
+              <Table bordered responsive className="align-middle text-center mt-3">
                 <thead className="table-light">
                   <tr>
                     <th>Name of Nominee(s) & Address</th>
-                    <th>Relationship</th>
-                    <th>Date of Birth</th>
-                    <th>Share Amount</th>
-                    <th>Guardian Details (If Minor)</th>
+                    <th>Nominee's relationship with the Employee</th>
+                    <th style={{ whiteSpace: 'nowrap', minWidth: '260px' }}>Date of Birth</th>
+                    <th>Total amount or share of the insured amount to be paid to each nominee</th>
+                    <th>
+                      If the nominee is minor name and address of the guardian who may receive
+                      the amount during the minority of the nominee
+                    </th>
                   </tr>
                 </thead>
-
                 <tbody>
                   {formik.values.nominees.map((nominee, index) => {
                     const touchedNominee = formik.touched.nominees?.[index];
                     const errorNominee = formik.errors.nominees?.[index];
-
                     return (
                       <tr key={index}>
-                        <td>
+                        <td style={{ minWidth: '250px' }}>
                           <Form.Control
                             name={`nominees[${index}].nomineeNameAndAddress`}
-                            as="textarea"
-                            rows={2}
-                            placeholder="Enter Name & Address"
+                            placeholder="Name and Address"
                             value={nominee.nomineeNameAndAddress}
                             onChange={formik.handleChange}
                             onBlur={formik.handleBlur}
+                            style={{ width: '100%' }}
                           />
                           {typeof touchedNominee === 'object' &&
                             touchedNominee?.nomineeNameAndAddress &&
@@ -359,7 +450,6 @@ const InsuranceNominationForm = ({
                               </p>
                             )}
                         </td>
-
                         <td>
                           <Form.Control
                             name={`nominees[${index}].relationship`}
@@ -377,8 +467,7 @@ const InsuranceNominationForm = ({
                               </p>
                             )}
                         </td>
-
-                        <td>
+                        <td style={{ minWidth: '260px', whiteSpace: 'nowrap' }}>
                           <DatePickerInput
                             name={`nominees[${index}].dateOfBirth`}
                             value={nominee.dateOfBirth}
@@ -394,13 +483,39 @@ const InsuranceNominationForm = ({
                               </p>
                             )}
                         </td>
-
                         <td>
                           <Form.Control
                             name={`nominees[${index}].shareAmount`}
                             placeholder="%"
                             value={nominee.shareAmount}
-                            onChange={formik.handleChange}
+                            onChange={(e) => {
+                              let value = e.target.value.replace(/[^0-9]/g, '');
+                              // Prevent above 100 for single field
+                              if (Number(value) > 100) {
+                                value = '100';
+                              }
+                              // Calculate total percentage
+                              const updatedNominees = [...formik.values.nominees];
+                              updatedNominees[index].shareAmount = value;
+                              const total = updatedNominees.reduce(
+                                (sum, item) => sum + Number(item.shareAmount || 0),
+                                0
+                              );
+                              // Allow update only if total <= 100
+                              if (total <= 100) {
+                                formik
+                                  .setFieldValue(
+                                    `nominees[${index}].shareAmount`,
+                                    value
+                                  )
+                                  .catch(() => undefined);
+                              } else {
+                                formik.setFieldError(
+                                  `nominees[${index}].shareAmount`,
+                                  'Total share amount cannot exceed 100%'
+                                );
+                              }
+                            }}
                             onBlur={formik.handleBlur}
                           />
                           {typeof touchedNominee === 'object' &&
@@ -412,84 +527,127 @@ const InsuranceNominationForm = ({
                               </p>
                             )}
                         </td>
-
                         <td>
-                          <Form.Control
-                            name={`nominees[${index}].guardianDetails`}
-                            as="textarea"
-                            rows={2}
-                            placeholder="Guardian Details"
-                            value={nominee.guardianDetails}
-                            onChange={formik.handleChange}
-                            onBlur={formik.handleBlur}
-                          />
-                          {typeof touchedNominee === 'object' &&
-                            touchedNominee?.guardianDetails &&
-                            typeof errorNominee === 'object' &&
-                            errorNominee?.guardianDetails && (
-                              <p className="text-danger small mb-0 text-start">
-                                {errorNominee.guardianDetails}
-                              </p>
+                          <div className="d-flex align-items-start gap-2">
+                            <div style={{ flex: 1 }}>
+                              <Form.Control
+                                as="textarea"
+                                rows={1}
+                                name={`nominees[${index}].guardianDetails`}
+                                placeholder="Guardian Details"
+                                value={nominee.guardianDetails}
+                                onChange={(e) => {
+                                  formik.handleChange(e);
+                                  e.target.style.height = "auto";
+                                  e.target.style.height =
+                                    e.target.scrollHeight + "px";
+                                }}
+                                onBlur={formik.handleBlur}
+                                style={{
+                                  overflow: "hidden",
+                                  resize: "none"
+                                }}
+                              />
+                              {typeof touchedNominee === "object" &&
+                                touchedNominee?.guardianDetails &&
+                                typeof errorNominee === "object" &&
+                                errorNominee?.guardianDetails && (
+                                  <p className="text-danger small mb-0 text-start">
+                                    {errorNominee.guardianDetails}
+                                  </p>
+                                )}
+                            </div>
+                            {formik.values.nominees.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="danger"
+                                size="sm"
+                                onClick={() => {
+                                  const updatedNominees =
+                                    formik.values.nominees.filter(
+                                      (_, i) => i !== index
+                                    );
+                                  formik
+                                    .setFieldValue('nominees', updatedNominees)
+                                    .catch(() => undefined);
+                                }}
+                              >
+                                Remove
+                              </Button>
                             )}
+                          </div>
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </Table>
-
-              <Row className="g-3 mt-4">
+              {formik.errors.nominees && typeof formik.errors.nominees === 'string' && (
+                <div className="alert alert-danger mb-3" role="alert">
+                  {formik.errors.nominees}
+                </div>
+              )}
+              {formik.values.nominees.reduce(
+                (sum, n) => sum + (parseFloat(n.shareAmount) || 0),
+                0
+              ) > 100 && (
+                  <div className="mb-3 p-2 bg-light border rounded">
+                    <p className="mb-0 fw-semibold">
+                      <div className="text-danger">
+                        Share should not exceed 100%
+                      </div>
+                    </p>
+                  </div>
+                )}
+              <Row className="mt-4 g-3">
                 <Col md={6}>
-                  <Form.Label>Place</Form.Label>
-                  <Form.Control
-                    name="place"
-                    placeholder="Enter Place"
-                    value={formik.values.place}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                  />
-                  {formik.touched.place && formik.errors.place && (
-                    <p className="text-danger small mb-0">{formik.errors.place}</p>
-                  )}
-
-                  <Form.Label className="mt-3">Date</Form.Label>
-                  <DatePickerInput
-                    name="date"
-                    value={formik.values.date}
-                    onValueChange={createDateValueChangeHandler(formik.setFieldValue, 'date')}
-                    onBlur={formik.handleBlur}
-                  />
-                  {formik.touched.date && formik.errors.date && (
-                    <p className="text-danger small mb-0">{formik.errors.date}</p>
-                  )}
+                  <Form.Group className="mb-3">
+                    <Form.Label>Place</Form.Label>
+                    <Form.Control
+                      name="place"
+                      type="text"
+                      value={formik.values.place}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+                    />
+                    {formik.touched.place && formik.errors.place && (
+                      <p className="text-danger small mb-0">{formik.errors.place}</p>
+                    )}
+                  </Form.Group>
+                  <Form.Group>
+                    <Form.Label>Date</Form.Label>
+                    <DatePickerInput
+                      name="date"
+                      value={formik.values.date}
+                      onValueChange={createDateValueChangeHandler(formik.setFieldValue, 'date')}
+                      onBlur={formik.handleBlur}
+                    />
+                    {formik.touched.date && formik.errors.date && (
+                      <p className="text-danger small mb-0">{formik.errors.date}</p>
+                    )}
+                  </Form.Group>
                 </Col>
-
                 <Col md={6} className="d-flex flex-column justify-content-end">
-                  <Form.Label>Employee Signature</Form.Label>
+                  <Form.Label>Signature of Employee</Form.Label>
                   <SignatureUpload
-                    name="employeeSignature"
-                    value={formik.values.employeeSignature}
+                    name="signature"
+                    value={formik.values.signature}
                     onChange={(value) => {
-                      formik.setFieldValue('employeeSignature', value).catch(() => undefined);
+                      formik.setFieldValue('signature', value).catch(() => undefined);
                       onEmployeeSignatureChange?.(value);
                     }}
                     onBlur={formik.handleBlur}
                   />
-                  {formik.touched.employeeSignature && formik.errors.employeeSignature && (
-                    <p className="text-danger small mb-0">{formik.errors.employeeSignature}</p>
+                  {formik.touched.signature && formik.errors.signature && (
+                    <p className="text-danger small mb-0">{formik.errors.signature}</p>
                   )}
                 </Col>
               </Row>
-
-              <div className="text-center mt-5">
+              <div className="text-center mt-4">
                 <Button
                   type="submit"
-                  size="lg"
-                  style={{
-                    backgroundColor: '#f18200',
-                    border: 'none',
-                    minWidth: '220px'
-                  }}
+                  className="border-0"
+                  style={{ backgroundColor: '#f18200' }}
                 >
                   Submit Form
                 </Button>
@@ -501,5 +659,4 @@ const InsuranceNominationForm = ({
     </>
   );
 };
-
 export default InsuranceNominationForm;

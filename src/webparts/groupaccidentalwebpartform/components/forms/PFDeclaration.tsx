@@ -11,6 +11,7 @@ import {
 } from "react-bootstrap";
 import { useFormik } from "formik";
 import * as Yup from "yup";
+import moment from "moment";
 import type { ISequentialFormProps } from "./ISequentialFormProps";
 import {
     createDateValueChangeHandler,
@@ -18,6 +19,7 @@ import {
     DatePickerInput,
     formatDateForDisplay
 } from "./dateFieldUtils";
+import { getSP } from "../../../../pnpjsConfig";
 
 type PFDeclarationValues = {
     employeeName: string;
@@ -103,7 +105,7 @@ const initialValues: PFDeclarationValues = {
     employerDate: "",
 };
 
-export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX.Element {
+export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, context }: ISequentialFormProps): JSX.Element {
     const [showSuccess, setShowSuccess] = React.useState(false);
     const [submitted, setSubmitted] = React.useState(false);
 
@@ -157,11 +159,154 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
         initialValues,
         validationSchema,
         onSubmit: async (values) => {
-            console.log("values", values);
-            setSubmitted(true);
-            setShowSuccess(true);
-            onComplete?.();
-        },
+
+            try {
+
+                const sp = getSP(context);
+
+                await sp.web.lists
+                    .getByTitle("EPFDeclarationForm11")
+                    .items.add({
+
+                        Title: values.employeeName,
+
+                        EmployeeName: values.employeeName,
+
+                        DateOfBirth:
+                            values.dateOfBirth
+                                ? moment(values.dateOfBirth, "DD/MM/YYYY").toISOString()
+                                : null,
+
+                        FatherOrSpouse: values.relationType,
+
+                        FatherSpouseName: values.fatherOrSpouseName,
+
+                        Gender: values.gender,
+
+                        MaritalStatus: values.maritalStatus,
+
+                        Email: values.email,
+
+                        Mobile: values.mobileNo,
+
+                        // SharePoint YES/NO columns
+                        EarlierMemberEPF1952:
+                            values.epf1952 === "Yes",
+
+                        EarlierMemberEPS1995:
+                            values.eps1995 === "Yes",
+
+                        InternationalWorker:
+                            values.internationalWorker === "Yes",
+
+                        CountryOrigin:
+                            values.countryOrigin || "",
+
+                        PassportNo:
+                            values.passportNo || "",
+
+                        PassportValidity:
+                            values.passportValidity
+                                ? moment(values.passportValidity, "DD/MM/YYYY").toISOString()
+                                : null,
+
+                        EducationalQualification:
+                            values.educationalQualification,
+
+                        SpeciallyAbled:
+                            values.speciallyAbled === "Yes",
+
+                        DisabilityCategory:
+                            values.disabilityCategory || "",
+
+                        BankAccountNo:
+                            values.bankAccNo,
+
+                        IFSCCode:
+                            values.ifscCode,
+
+                        AadhaarNo:
+                            values.aadharNo,
+
+                        DoHavePan:
+                            values.doHavePan === "Yes",
+
+                        PANNo:
+                            values.pan || "",
+
+                        Place:
+                            values.place,
+
+                        DeclarationAccepted:
+                            values.declarationAccepted || false,
+
+                        EmployeeDeclarationDate:
+                            new Date().toISOString(),
+
+                        PresentEmployerName:
+                            values.employerMemberName || "",
+
+                        DateOfJoining:
+                            values.employerJoinDate
+                                ? moment(values.employerJoinDate, "DD/MM/YYYY").toISOString()
+                                : null,
+
+                        PFMemberID:
+                            values.employerPfMemberId || "",
+
+                        UAN:
+                            values.employerUan || values.uan || "",
+
+                        PreviousPFDetails:
+                            values.previousPf || "",
+
+                        EmployerKycPending:
+                            values.employerKycPending || false,
+
+                        UANUploadedNotApproved:
+                            values.employerKycUploadedNotApproved || false,
+
+                        UANApprovedWithDSC:
+                            values.employerKycApproved || false,
+
+                        PreviousPFTransferred:
+                            values.employerTransferApproved || false,
+
+                        PhysicalClaimRequired:
+                            values.employerPhysicalClaim || false,
+
+                        EmployerDeclarationDate:
+                            values.employerDate
+                                ? moment(values.employerDate, "DD/MM/YYYY").toISOString()
+                                : null,
+
+                        EmployerName:
+                            values.employerMemberName || "",
+
+                        SubmittedBy:
+                            context?.pageContext.user.displayName || "",
+
+                        SubmittedEmail:
+                            context?.pageContext.user.email || "",
+
+                        SubmittedTime:
+                            new Date().toISOString()
+                    });
+
+                alert("Form submitted successfully");
+
+                formik.resetForm();
+
+                setSubmitted(true);
+
+            } catch (error: any) {
+
+                console.error("Submit Error => ", error);
+
+           
+                alert(error?.message || "Submission failed");
+            }
+        }
     });
 
     const handleExclusiveCheckboxChange = (
@@ -214,9 +359,11 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                     Form No.11 Declaration Form
                 </Card.Header>
                 <Card.Body className="p-4">
-                    <Alert variant="light">
-                        Employees Provident Fund Organisation Declaration Form
-                    </Alert>
+                    {/* <Alert variant="light">
+                        
+                    </Alert> */}
+                        <h5 className="text-white p-2 rounded" style={{backgroundColor: "rgb(241, 130, 0)"}}>Employees Provident Fund Organisation Declaration Form</h5>
+
                     <Form onSubmit={formik.handleSubmit}>
                         <Row className="g-3">
                             <Col md={6}>
@@ -261,12 +408,14 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                                         value="Father"
                                         checked={formik.values.relationType === "Father"}
                                         onChange={formik.handleChange}
+                                        className="customCheckbox "
                                     />
                                     <Form.Check
                                         type="radio"
                                         name="relationType"
                                         label="Spouse"
                                         value="Spouse"
+                                        className="customCheckbox "
                                         checked={formik.values.relationType === "Spouse"}
                                         onChange={formik.handleChange}
                                     />
@@ -283,10 +432,10 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                                 {((formik.touched.relationType && formik.errors.relationType) ||
                                     (formik.touched.fatherOrSpouseName &&
                                         formik.errors.fatherOrSpouseName)) && (
-                                    <p className="text-danger small mb-0">
-                                        {formik.errors.relationType || formik.errors.fatherOrSpouseName}
-                                    </p>
-                                )}
+                                        <p className="text-danger small mb-0">
+                                            {formik.errors.relationType || formik.errors.fatherOrSpouseName}
+                                        </p>
+                                    )}
                             </Col>
                             <Col md={6}>
                                 <Form.Group>
@@ -300,7 +449,7 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                                         <option value="">Select</option>
                                         <option>Male</option>
                                         <option>Female</option>
-                                        <option>Transgender</option>
+                    <option>Others</option>
                                     </Form.Select>
                                     {formik.touched.gender && formik.errors.gender && (
                                         <p className="text-danger small mb-0">
@@ -319,11 +468,11 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                                         onBlur={formik.handleBlur}
                                     >
                                         <option value="">Select</option>
+                                        
+                                        <option>Single</option>
                                         <option>Married</option>
-                                        <option>Unmarried</option>
-                                        <option>Widow</option>
-                                        <option>Widower</option>
-                                        <option>Divorcee</option>
+                                        <option>divorce</option>
+                                        <option>widow</option>
                                     </Form.Select>
                                     {formik.touched.maritalStatus && formik.errors.maritalStatus && (
                                         <p className="text-danger small mb-0">
@@ -483,14 +632,14 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                                         onBlur={formik.handleBlur}
                                     >
                                         <option value="">Select</option>
-                                        <option>Illiterate</option>
+                                        {/* <option>Illiterate</option>
                                         <option>Non-Matric</option>
-                                        <option>Matric</option>
+                                        <option>Matric</option> */}
                                         <option>Senior Secondary</option>
-                                        <option>Graduate</option>
+                                        <option>Bachelor Degree</option>
                                         <option>Post Graduate</option>
-                                        <option>Doctor</option>
-                                        <option>Technical/Professional</option>
+                                        {/* <option>Doctor</option>
+                                        <option>Technical/Professional</option> */}
                                     </Form.Select>
                                     {formik.touched.educationalQualification &&
                                         formik.errors.educationalQualification && (
@@ -606,7 +755,7 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                             </Col>
                         </Row>
 
-                        <h5 className="mt-4">KYC Details</h5>
+                        <h5 className="text-white p-2 rounded mt-3" style={{backgroundColor: "rgb(241, 130, 0)"}}>KYC Details</h5>
                         <Row className="g-3">
                             <Col md={4}>
                                 <Form.Control
@@ -645,6 +794,7 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                                             e.target.value.replace(/\D/g, "").slice(0, 12)
                                         ).catch(() => undefined)
                                     }
+                                    maxLength={12}
                                 />
                             </Col>
                         </Row>
@@ -674,6 +824,7 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                                                 ).catch(() => undefined)
                                             }
                                             onBlur={formik.handleBlur}
+                                            maxLength={10}
                                         />
                                         {formik.touched.pan && formik.errors.pan && (
                                             <p className="text-danger small mb-0">
@@ -707,9 +858,17 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                                     </Col>
                                 </Row>
                                 <Form.Check
-                                    className="mt-3"
+                                    className="mt-3 customCheckbox"
+
                                     name="declarationAccepted"
-                                    label="I acknowledge the information provided is correct."
+                                    label={
+                                        <span
+                                            style={{
+                                                marginLeft: "6px",
+                                            }}
+                                        >
+                                            I acknowledge the information provided is correct.
+                                        </span>}
                                     checked={formik.values.declarationAccepted}
                                     onChange={formik.handleChange}
                                     onBlur={formik.handleBlur}
@@ -723,10 +882,11 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
 
                                 <Card className="mt-4 ">
                                     <Card.Header
-                                        className="fw-bold text-center text-uppercase"
+                                        className="fw-bold text-center text-uppercase text-white"
                                         style={{
-                                            backgroundColor: "#e9ecef",
-                                            fontSize: "18px"
+                                            backgroundColor: "rgb(241, 130, 0)",
+                                            fontSize: "18px",
+                                            color: "#fff"
                                         }}
                                     >
                                         Declaration By Present Employer
@@ -794,8 +954,15 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                                                 <Form.Check
                                                     name="employerKycPending"
                                                     type="checkbox"
-                                                    label="The KYC details of the above member in the UAN database have not been uploaded"
-                                                    className="mb-2"
+                                                    label={
+                                                        <span
+                                                            style={{
+                                                                marginLeft: "6px",
+                                                            }}
+                                                        >
+                                                            The KYC details of the above member in the UAN database have not been uploaded
+                                                        </span>}
+                                                    className="mb-2 d-block customCheckbox"
                                                     checked={formik.values.employerKycPending}
                                                     onChange={handleExclusiveCheckboxChange("employerKycPending", [
                                                         "employerKycPending",
@@ -807,8 +974,16 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                                                 <Form.Check
                                                     name="employerKycUploadedNotApproved"
                                                     type="checkbox"
-                                                    label="Have been uploaded but not approved"
-                                                    className="mb-2"
+                                                    label={
+                                                        <span
+                                                            style={{
+                                                                marginLeft: "6px",
+                                                            }}
+                                                        >
+                                                            Have been uploaded but not approved
+                                                        </span>}
+
+                                                    className="mb-2 customCheckbox"
                                                     checked={formik.values.employerKycUploadedNotApproved}
                                                     onChange={handleExclusiveCheckboxChange("employerKycUploadedNotApproved", [
                                                         "employerKycPending",
@@ -820,8 +995,15 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                                                 <Form.Check
                                                     name="employerKycApproved"
                                                     type="checkbox"
-                                                    label="Have been uploaded and approved with DSC"
-                                                    className="mb-2"
+                                                    label={
+                                                        <span
+                                                            style={{
+                                                                marginLeft: "6px",
+                                                            }}
+                                                        >
+                                                            Have been uploaded and approved with DSC
+                                                        </span>}
+                                                    className="mb-2 customCheckbox"
                                                     checked={formik.values.employerKycApproved}
                                                     onChange={handleExclusiveCheckboxChange("employerKycApproved", [
                                                         "employerKycPending",
@@ -852,8 +1034,15 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                                                 <Form.Check
                                                     name="employerTransferApproved"
                                                     type="checkbox"
-                                                    label="The KYC details of the above member in the UAN database have been approved with Digital Signature Certificate and transfer request has been generated on portal."
-                                                    className="mb-2"
+                                                    label={
+                                                        <span
+                                                            style={{
+                                                                marginLeft: "6px",
+                                                            }}
+                                                        >
+                                                            The KYC details of the above member in the UAN database have been approved with Digital Signature Certificate and transfer request has been generated on portal.
+                                                        </span>}
+                                                    className="mb-2 d-block customCheckbox"
                                                     checked={formik.values.employerTransferApproved}
                                                     onChange={handleExclusiveCheckboxChange("employerTransferApproved", [
                                                         "employerTransferApproved",
@@ -864,8 +1053,15 @@ export default function PFDeclaration({ onComplete }: ISequentialFormProps): JSX
                                                 <Form.Check
                                                     name="employerPhysicalClaim"
                                                     type="checkbox"
-                                                    label="As the DSC of establishment are not registered with EPFO, the member has been informed to file physical claim (Form-13) for transfer of funds from his previous establishment."
-                                                    className="mb-2"
+                                                    label={
+                                                        <span
+                                                            style={{
+                                                                marginLeft: "6px",
+                                                            }}
+                                                        >
+                                                            As the DSC of establishment are not registered with EPFO, the member has been informed to file physical claim (Form-13) for transfer of funds from his previous establishment.
+                                                        </span>}
+                                                    className="mb-2 customCheckbox"
                                                     checked={formik.values.employerPhysicalClaim}
                                                     onChange={handleExclusiveCheckboxChange("employerPhysicalClaim", [
                                                         "employerTransferApproved",

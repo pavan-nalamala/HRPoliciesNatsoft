@@ -18,7 +18,7 @@ body {
 
 /* Disable Resize */
 textarea,
-textarea.form-control {
+textarea.formControl {
   resize: none !important;
 }
 
@@ -39,7 +39,7 @@ textarea.form-control {
   width: 100%;
   min-width: 0;
   padding: 12px;
-  border: 1px solid #bbd8e9;
+  border: 1px solid #e9debb;
   border-radius: 14px;
   background: #fff;
   overflow: auto;
@@ -60,7 +60,7 @@ textarea.form-control {
   gap: 10px;
   margin-bottom: 18px;
   padding: 12px;
-  background: linear-gradient(135deg, #e4f0f8, #bbd8e9);
+  background: linear-gradient(135deg, #ffc888, #ffebd3);
   border-radius: 14px;
 }
 
@@ -71,19 +71,34 @@ textarea.form-control {
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
-  color: #001d39;
-  background: #bbd8e9;
+  color: #000;
+  background: #e39841;
   transition: all 0.25s ease;
 }
 
 .navItem:hover {
-  background: #7bbde8;
+  background: #f18200;
 }
 
 .navItemActive {
-  background: linear-gradient(135deg, #0a4174, #49769f);
+  background: #f18200;
   color: #fff;
 }
+
+
+input[type="checkbox"] {
+  width: 20px !important;
+  height: 20px !important;
+  border: 2px solid #f18200 !important;
+  position: relative !important;
+  top: -3px !important;
+}
+
+.form-check-input:checked {
+  background-color: #f18200 !important;
+  border-color: #f18200 !important;
+}
+
 
 /* Responsive */
 @media (max-width: 768px) {
@@ -105,6 +120,65 @@ textarea.form-control {
   }
 }
 
-input,textarea,select .form-control,.form-select {
+input,
+textarea,
+.formControl {
   border: 1px solid #000 !important;
+}
+
+select {
+  border: 1px solid #000 !important;
+}
+
+.form-select,
+.form-select:focus,
+.form-select:active {
+  border: 1px solid #000 !important;
+  box-shadow: none !important;
+}
+button[aria-label^="Open calendar for"] {
+  background: #fff !important;
+  border-bottom-right-radius: 6px !important;
+  border-top-right-radius: 6px !important;
+  border: 1px solid #000 !important;
+}
+
+
+
+button[aria-label^="Open calendar for"] svg {
+  display: none !important;
+}
+
+button[aria-label^="Open calendar for"]::after {
+  content: "";
+  display: inline-block;
+  width: 16px !important;
+  height: 16px !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%23000' viewBox='0 0 24 24'%3E%3Cpath d='M7 2a1 1 0 0 1 1 1v1h8V3a1 1 0 1 1 2 0v1h1a3 3 0 0 1 3 3v13a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h1V3a1 1 0 0 1 1-1Zm12 7H5v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9Z'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.customCheck .form-check-label {
+  display: block !important;
+}
+
+.customCheckbox {
+  display: flex !important;
+  align-items: flex-start !important;
+}
+
+.customCheckbox :global(.form-check-input) {
+  margin-top: 5px !important;
+}
+
+.customCheckbox :global(.form-check-label) {
+  margin-left: 10px !important;
+  line-height: 1.5;
+  background-color: red !important;
+}
+
+.custom-check .form-check-label {
+  margin-left: 10px;
+  margin-top: 5px;
 }

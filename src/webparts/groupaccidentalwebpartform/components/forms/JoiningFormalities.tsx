@@ -3,38 +3,41 @@ import FormSection from './FormSection';
 import { Form, Row, Col, Table, Card, Button } from 'react-bootstrap';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
-import type { ISequentialFormProps } from './ISequentialFormProps';
 import {
     createDateValueChangeHandler,
     createDateValidation,
     DatePickerInput
 } from './dateFieldUtils';
 import SignatureUpload from './SignatureUpload';
-
+import { getSP } from '../../../../pnpjsConfig';
+import type { ISequentialFormProps } from './ISequentialFormProps';
+import moment from 'moment';
+import { spfi, SPFx } from "@pnp/sp";
 type EducationRow = {
     qualification: string;
     institute: string;
     specialization: string;
     year: string;
 };
-
 type Reference = {
     name: string;
     occupation: string;
     relationship: string;
     contact: string;
 };
-
 const maxPhotoSizeInBytes = 2 * 1024 * 1024;
-
 const JoiningFormalities = ({
     onComplete,
     sharedEmployeeSignature,
-    onEmployeeSignatureChange
+    onEmployeeSignatureChange,
+    context,
+    employeePFData,
 }: ISequentialFormProps): JSX.Element => {
+    const [getDepartments, setGetDepartments] = React.useState<any[]>([]);
+    const [getDesignations, setGetDesignations] = React.useState<any[]>([]);
+    const [getEducationsDetails, setGetEducationsDetails] = React.useState<any[]>([]);
     React.useEffect(() => {
         if (!document.getElementById('bootstrap-css')) {
-
             const link = document.createElement('link');
             link.id = 'bootstrap-css';
             link.rel = 'stylesheet';
@@ -48,8 +51,38 @@ const JoiningFormalities = ({
         reportingTo: Yup.string(),
         department: Yup.string(),
         fullName: Yup.string().required("Full Name is required"),
-        dob: createDateValidation("Date of Birth is required", "Date of Birth must be in DD/MM/YYYY format"),
-        actualDob: createDateValidation("Actual DOB is required", "Actual DOB must be in DD/MM/YYYY format"),
+        dob: createDateValidation("Date of Birth is required", "Date of Birth must be in DD/MM/YYYY format")
+            .test(
+                "dob-age-validation",
+                "Minimum age must be 18 years",
+                function (value) {
+                    if (!value) return true;
+                    const [day, month, year] = value.split('/');
+                    const dob = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                    const today = new Date();
+                    const age = today.getFullYear() - dob.getFullYear();
+                    const monthDiff = today.getMonth() - dob.getMonth();
+                    const dayDiff = today.getDate() - dob.getDate();
+                    const actualAge = monthDiff < 0 || (monthDiff === 0 && dayDiff < 0) ? age - 1 : age;
+                    return actualAge >= 18;
+                }
+            ),
+        actualDob: createDateValidation("Actual DOB is required", "Actual DOB must be in DD/MM/YYYY format")
+            .test(
+                "actualDob-age-validation",
+                "Minimum age must be 18 years",
+                function (value) {
+                    if (!value) return true;
+                    const [day, month, year] = value.split('/');
+                    const dob = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                    const today = new Date();
+                    const age = today.getFullYear() - dob.getFullYear();
+                    const monthDiff = today.getMonth() - dob.getMonth();
+                    const dayDiff = today.getDate() - dob.getDate();
+                    const actualAge = monthDiff < 0 || (monthDiff === 0 && dayDiff < 0) ? age - 1 : age;
+                    return actualAge >= 18;
+                }
+            ),
         panNo: Yup.string().matches(
             /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/,
             {
@@ -57,7 +90,6 @@ const JoiningFormalities = ({
                 excludeEmptyString: true
             }
         ),
-
         photoFile: Yup.mixed<File>()
             .required("Photo file is required")
             .test(
@@ -65,7 +97,6 @@ const JoiningFormalities = ({
                 "Photo file size must be below 2 MB",
                 (value) => !value || value.size <= maxPhotoSizeInBytes
             ),
-
         education: Yup.array().of(
             Yup.object().shape({
                 qualification: Yup.string().test(
@@ -99,23 +130,18 @@ const JoiningFormalities = ({
                         const index = Number(this.path.match(/\[(\d+)\]/)?.[1] ?? -1);
                         return index !== 0 || !!value?.trim();
                     }
-                ),
+                ).matches(/^\d+$/, "Year must contain only numeric values"),
             })
         ),
-
         /* ================= BANK ================= */
         bankName: Yup.string().required("Bank name is required"),
-
         accountNo: Yup.string()
             .required("Account number is required")
             .matches(/^[0-9]{9,18}$/, "Invalid account number"),
-
         ifscCode: Yup.string()
             .required("IFSC is required")
             .matches(/^[A-Z]{4}0[A-Z0-9]{6}$/, "Invalid IFSC"),
-
         branchDetails: Yup.string().required("Branch details required"),
-
         /* ================= REFERENCES ================= */
         references: Yup.array().of(
             Yup.object().shape({
@@ -126,19 +152,21 @@ const JoiningFormalities = ({
                     .required("Contact No & Address is required"),
             })
         ),
-
         /* ================= JOINING LETTER ================= */
         joiningLetterDate: createDateValidation("Date is required", "Date must be in DD/MM/YYYY format"),
-
-
-
         joiningDateText: createDateValidation("Joining date required", "Joining date must be in DD/MM/YYYY format"),
-
         designationText: Yup.string().required("Designation required"),
-
-        signatureName: Yup.string().required("Signature required"),
+        signatureName: Yup.mixed()
+            .required("Signature required")
+            .test(
+                "fileSize",
+                "Signature should be less than 200 KB",
+                (value: any) => {
+                    if (!value) return false;
+                    return value.size <= 200 * 1024;
+                }
+            )
     });
-
     const joiningFormValidation = useFormik<{
         employeeId: string;
         designation: string;
@@ -159,11 +187,8 @@ const JoiningFormalities = ({
         accountNo: string;
         ifscCode: string;
         branchDetails: string;
-
         references: Reference[];
-
         joiningLetterDate: string;
-
         joiningDateText: string;
         designationText: string;
         signatureName: string;
@@ -207,36 +232,120 @@ const JoiningFormalities = ({
             accountNo: "",
             ifscCode: "",
             branchDetails: "",
-
             references: [
                 { name: "", occupation: "", relationship: "", contact: "" },
                 { name: "", occupation: "", relationship: "", contact: "" },
             ],
-
             joiningLetterDate: "",
             joiningDateText: "",
             designationText: "",
             signatureName: "",
         },
-
         validationSchema: joiningValidationSchema,
-
         onSubmit: async (values) => {
-            console.log("values", values);
-            onComplete?.();
-        },
+            try {
+                const sp = getSP(context);
+                if (!values.fullName) return;
+                const empResponse = await sp.web.lists
+                    .getByTitle("JoiningFormalities")
+                    .items.add({
+                        Title: values.fullName,
+                        hr_employee_ID: values.employeeId,
+                        hr_designation: values.designation,
+                        hr_department: values.department,
+                        employee_full_name: values.fullName,
+                        employee_DOB: moment(values.dob, 'DD/MM/YYYY').toISOString(),
+                        employee_actual_DOB: moment(values.actualDob, 'DD/MM/YYYY').toISOString(),
+                        employee_reporting_to: values.reportingTo,
+                        bank_name_as_per_bank_records: values.bankName,
+                        bank_account_no: values.accountNo,
+                        bank_IFSC_code: values.ifscCode,
+                        bank_branch: values.branchDetails,
+                        can_id: String(employeePFData?.ID),
+                    });
+                const employeeSPID = empResponse?.data?.Id;
+                if (Array.isArray(values.education)) {
+                    for (const edu of values.education) {
+                        if (!edu.qualification) continue;
+                        await sp.web.lists.getByTitle("EmployeeEducation").items.add({
+                            Title: values.fullName,
+                            EmployeeID: String(employeeSPID),
+                            Qualification: edu.qualification,
+                            Institute: edu.institute,
+                            Specialization: edu.specialization,
+                            YearCompleted: edu.year
+                                ? moment(edu.year, 'YYYY').toISOString()
+                                : null
+                        });
+                    }
+                }
+                // 
+                if (Array.isArray(values.references)) {
+                    for (const ref of values.references) {
+                        if (!ref.name) continue;
+                        await sp.web.lists.getByTitle("EmployeeReferences").items.add({
+                            Title: values.fullName,
+                            EmployeeID: String(employeeSPID),
+                            Name: ref.name,
+                            Occupation: ref.occupation,
+                            Relationship: ref.relationship,
+                            Contact: ref.contact
+                        });
+                    }
+                }
+                onComplete?.();
+            } catch (error) {
+                console.error("Submit Error:", error);
+                alert("Submission failed");
+            }
+        }
     });
-
     React.useEffect(() => {
         if (sharedEmployeeSignature && joiningFormValidation.values.signatureName !== sharedEmployeeSignature) {
             joiningFormValidation.setFieldValue('signatureName', sharedEmployeeSignature).catch(() => undefined);
         }
     }, [sharedEmployeeSignature]);
-
+    const getDepart = async (): Promise<void> => {
+        try {
+            const sp = getSP(context);
+            const items = await sp.web.lists
+                .getByTitle("DepartmentsList")
+                .items();
+            setGetDepartments(items);
+        } catch (error) {
+            console.error("Error fetching departments:", error);
+        }
+    };
+    const getDesi = async (): Promise<void> => {
+        try {
+            const sp = getSP(context);
+            const items = await sp.web.lists
+                .getByTitle("DesignationsList")
+                .items();
+            setGetDesignations(items);
+        } catch (error) {
+            console.error("Error fetching designations:", error);
+        }
+    };
+    const getEducations = async (): Promise<void> => {
+        try {
+            const sp = getSP(context);
+            const items = await sp.web.lists
+                .getByTitle("EducationalBackground")
+                .items();
+            setGetEducationsDetails(items);
+        } catch (error) {
+            console.error("Error fetching designations:", error);
+        }
+    };
+    React.useEffect(() => {
+        void getDepart();
+        void getDesi();
+        void getEducations();
+    }, []);
     return (
         <>
             <FormSection title="Joining Formalities" />
-
             <div>
                 <div>
                     <Card className="shadow-lg border-0">
@@ -250,7 +359,6 @@ const JoiningFormalities = ({
                                             <small>Plot No:21, Sruthi Sadan, Gachibowli, Hyderabad</small>
                                         </div>
                                     </div>
-
                                     <div className="d-flex justify-content-md-end justify-content-center mt-3 mt-md-0 col-md-4">
                                         <div style={{ width: "200px" }}>
                                             <div
@@ -267,7 +375,6 @@ const JoiningFormalities = ({
                                                     accept="image/*"
                                                     onChange={(e) => {
                                                         const file = e.currentTarget.files?.[0] ?? null;
-
                                                         joiningFormValidation
                                                             .setFieldValue("photoFile", file)
                                                             .catch(() => undefined);
@@ -286,7 +393,6 @@ const JoiningFormalities = ({
                                                         zIndex: 2,
                                                     }}
                                                 />
-
                                                 {/* UPLOAD BOX */}
                                                 <div
                                                     style={{
@@ -322,15 +428,12 @@ const JoiningFormalities = ({
                                                     )}
                                                 </div>
                                             </div>
-
                                             {/* FILE NAME */}
                                             {joiningFormValidation.values.photoFile && (
                                                 <small className="d-block mt-2 text-center text-muted">
                                                     {joiningFormValidation.values.photoFile.name}
                                                 </small>
                                             )}
-
-                                            {/* ✅ ERROR MOVED HERE (BOTTOM OF PHOTO BOX) */}
                                             {joiningFormValidation.touched.photoFile &&
                                                 joiningFormValidation.errors.photoFile && (
                                                     <p className="mt-2 mb-0 text-center text-danger small">
@@ -347,7 +450,6 @@ const JoiningFormalities = ({
                                 >
                                     Employee Details
                                 </h5>
-
                                 <Row className="mb-3">
                                     <Col md={6}>
                                         <Form.Label>Employee ID</Form.Label>
@@ -356,6 +458,7 @@ const JoiningFormalities = ({
                                             value={joiningFormValidation.values.employeeId}
                                             onChange={joiningFormValidation.handleChange}
                                             onBlur={joiningFormValidation.handleBlur}
+                                            disabled={employeePFData?.EmailID !== 'hr@natit.in'}
                                         />
                                         {joiningFormValidation.touched.employeeId &&
                                             joiningFormValidation.errors.employeeId && (
@@ -364,15 +467,28 @@ const JoiningFormalities = ({
                                                 </p>
                                             )}
                                     </Col>
-
                                     <Col md={6}>
                                         <Form.Label>Designation</Form.Label>
-                                        <Form.Control
+                                        {/* <Form.Control
                                             name="designation"
                                             value={joiningFormValidation.values.designation}
                                             onChange={joiningFormValidation.handleChange}
                                             onBlur={joiningFormValidation.handleBlur}
-                                        />
+                                        /> */}
+                                        <Form.Select
+                                            name="designation"
+                                            value={joiningFormValidation.values.designation}
+                                            onChange={joiningFormValidation.handleChange}
+                                            onBlur={joiningFormValidation.handleBlur}
+                                            disabled={employeePFData?.EmailID !== 'hr@natit.in'}
+                                        >
+                                            <option value="">Select Designation</option>
+                                            {getDesignations?.map((desig) => (
+                                                <option key={desig.ID} value={desig.Designations}>
+                                                    {desig.Designations}
+                                                </option>
+                                            ))}
+                                        </Form.Select>
                                         {joiningFormValidation.touched.designation &&
                                             joiningFormValidation.errors.designation && (
                                                 <p className="text-danger small">
@@ -381,7 +497,6 @@ const JoiningFormalities = ({
                                             )}
                                     </Col>
                                 </Row>
-
                                 <Row className="mb-3">
                                     <Col md={6}>
                                         <Form.Label>Reporting To</Form.Label>
@@ -390,6 +505,7 @@ const JoiningFormalities = ({
                                             value={joiningFormValidation.values.reportingTo}
                                             onChange={joiningFormValidation.handleChange}
                                             onBlur={joiningFormValidation.handleBlur}
+                                            disabled={employeePFData?.EmailID !== 'hr@natit.in'}
                                         />
                                         {joiningFormValidation.touched.reportingTo &&
                                             joiningFormValidation.errors.reportingTo && (
@@ -398,15 +514,29 @@ const JoiningFormalities = ({
                                                 </p>
                                             )}
                                     </Col>
-
                                     <Col md={6}>
                                         <Form.Label>Department</Form.Label>
-                                        <Form.Control
+                                        {/* <Form.Control
                                             name="department"
                                             value={joiningFormValidation.values.department}
                                             onChange={joiningFormValidation.handleChange}
                                             onBlur={joiningFormValidation.handleBlur}
-                                        />
+                                            // disabled={employeePFData?.EmailID !== 'hr@natit.in'}
+                                        /> */}
+                                        <Form.Select
+                                            name="department"
+                                            value={joiningFormValidation.values.department}
+                                            onChange={joiningFormValidation.handleChange}
+                                            onBlur={joiningFormValidation.handleBlur}
+                                            disabled={employeePFData?.EmailID !== 'hr@natit.in'}
+                                        >
+                                            <option value="">Select Department</option>
+                                            {getDepartments?.map((dept) => (
+                                                <option key={dept.ID} value={dept.Department}>
+                                                    {dept.Department}
+                                                </option>
+                                            ))}
+                                        </Form.Select>
                                         {joiningFormValidation.touched.department &&
                                             joiningFormValidation.errors.department && (
                                                 <p className="text-danger small">
@@ -415,7 +545,6 @@ const JoiningFormalities = ({
                                             )}
                                     </Col>
                                 </Row>
-
                                 {/* Personal Info */}
                                 <h5
                                     className="text-white p-2 rounded"
@@ -423,7 +552,6 @@ const JoiningFormalities = ({
                                 >
                                     Personal Information
                                 </h5>
-
                                 <Row className="mb-3">
                                     <Col md={6}>
                                         <Form.Label>Full Name</Form.Label>
@@ -440,7 +568,6 @@ const JoiningFormalities = ({
                                                 </p>
                                             )}
                                     </Col>
-
                                     <Col md={3}>
                                         <Form.Label>DOB</Form.Label>
                                         <DatePickerInput
@@ -456,7 +583,6 @@ const JoiningFormalities = ({
                                                 </p>
                                             )}
                                     </Col>
-
                                     <Col md={3}>
                                         <Form.Label>Actual DOB</Form.Label>
                                         <DatePickerInput
@@ -473,7 +599,6 @@ const JoiningFormalities = ({
                                             )}
                                     </Col>
                                 </Row>
-
                                 {/* Education */}
                                 <h5
                                     className="text-white p-2 rounded"
@@ -481,7 +606,6 @@ const JoiningFormalities = ({
                                 >
                                     Educational Background
                                 </h5>
-
                                 <Table bordered responsive>
                                     <thead>
                                         <tr>
@@ -491,30 +615,41 @@ const JoiningFormalities = ({
                                             <th>Year</th>
                                         </tr>
                                     </thead>
-
                                     <tbody>
                                         {joiningFormValidation.values.education.map((row, index) => {
                                             const touchedRow = joiningFormValidation.touched.education?.[index];
                                             const errorRow = joiningFormValidation.errors.education?.[index];
                                             const isFirstRow = index === 0;
-
                                             return (
                                                 <tr key={index}>
                                                     <td>
-                                                        <Form.Control
+                                                        {/* <Form.Control
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                        /> */}
+                                                        <Form.Select
                                                             name={`education[${index}].qualification`}
                                                             value={row.qualification}
                                                             onChange={joiningFormValidation.handleChange}
                                                             onBlur={joiningFormValidation.handleBlur}
                                                             isInvalid={isFirstRow && typeof touchedRow === "object" && touchedRow?.qualification && typeof errorRow === "object" && !!errorRow?.qualification}
-                                                        />
+                                                        >
+                                                            <option value="">Select Qualification</option>
+                                                            {getEducationsDetails?.map((edu) => (
+                                                                <option key={edu.ID} value={edu.qualification}>
+                                                                    {edu.qualification}
+                                                                </option>
+                                                            ))}
+                                                        </Form.Select>
                                                         {isFirstRow && typeof touchedRow === "object" && touchedRow?.qualification && typeof errorRow === "object" && errorRow?.qualification && (
                                                             <p className="text-danger small">
                                                                 {errorRow.qualification}
                                                             </p>
                                                         )}
                                                     </td>
-
                                                     <td>
                                                         <Form.Control
                                                             name={`education[${index}].institute`}
@@ -529,7 +664,6 @@ const JoiningFormalities = ({
                                                             </p>
                                                         )}
                                                     </td>
-
                                                     <td>
                                                         <Form.Control
                                                             name={`education[${index}].specialization`}
@@ -544,14 +678,18 @@ const JoiningFormalities = ({
                                                             </p>
                                                         )}
                                                     </td>
-
                                                     <td>
                                                         <Form.Control
                                                             name={`education[${index}].year`}
                                                             value={row.year}
-                                                            onChange={joiningFormValidation.handleChange}
+                                                            maxLength={4}
+                                                            onChange={(e) => {
+                                                                const value = e.target.value.replace(/[^0-9]/g, '');
+                                                                joiningFormValidation.setFieldValue(`education[${index}].year`, value).catch(() => undefined);
+                                                            }}
                                                             onBlur={joiningFormValidation.handleBlur}
                                                             isInvalid={isFirstRow && typeof touchedRow === "object" && touchedRow?.year && typeof errorRow === "object" && !!errorRow?.year}
+                                                            placeholder="YYYY"
                                                         />
                                                         {isFirstRow && typeof touchedRow === "object" && touchedRow?.year && typeof errorRow === "object" && errorRow?.year && (
                                                             <p className="text-danger small">
@@ -564,7 +702,6 @@ const JoiningFormalities = ({
                                         })}
                                     </tbody>
                                 </Table>
-
                                 <div>
                                     <h5 className="text-dark py-2">Bank Account Details</h5>
                                     <div className="table-responsive">
@@ -578,18 +715,13 @@ const JoiningFormalities = ({
                                                     <th>Branch Details</th>
                                                 </tr>
                                             </thead>
-
                                             <tbody>
                                                 <tr>
                                                     {/* Bank Name */}
-                                                    
                                                     <td>
                                                         <select disabled className='form-select'>
-                                                           
                                                             <option value="ICICI Bank">ICICI Bank</option>
                                                             <option value="Hdfc Bank">HDFC Bank</option>
-
-                                                            
                                                         </select>
                                                     </td>
                                                     <td>
@@ -607,7 +739,6 @@ const JoiningFormalities = ({
                                                                 </p>
                                                             )}
                                                     </td>
-
                                                     {/* Account No */}
                                                     <td>
                                                         <input
@@ -624,7 +755,6 @@ const JoiningFormalities = ({
                                                                 </p>
                                                             )}
                                                     </td>
-
                                                     {/* IFSC */}
                                                     <td>
                                                         <input
@@ -638,7 +768,6 @@ const JoiningFormalities = ({
                                                             }}
                                                             onBlur={joiningFormValidation.handleBlur}
                                                         />
-
                                                         {joiningFormValidation.touched.ifscCode &&
                                                             joiningFormValidation.errors.ifscCode && (
                                                                 <p className="text-danger small">
@@ -646,7 +775,6 @@ const JoiningFormalities = ({
                                                                 </p>
                                                             )}
                                                     </td>
-
                                                     {/* Branch */}
                                                     <td>
                                                         <input
@@ -670,25 +798,21 @@ const JoiningFormalities = ({
                                 </div>
                                 <div className="g-4 mt-2 row">
                                     <h5 className="text-dark py-2">References</h5>
-
                                     <h5
                                         className="text-white p-2 mt-2 rounded"
                                         style={{ backgroundColor: "#f18200" }}
                                     >
                                         REFERENCES : (Kindly provide two references e.g. Reporting Managers)
                                     </h5>
-
                                     {joiningFormValidation.values.references.map((ref, index) => {
                                         const touchedReference = joiningFormValidation.touched.references?.[index];
                                         const errorReference = joiningFormValidation.errors.references?.[index];
-
                                         return (
                                             <div className="col-md-6" key={index}>
                                                 <div className="border rounded p-3 shadow-sm">
                                                     <h6 className="fw-bold mb-3">
                                                         Reference {index + 1}
                                                     </h6>
-
                                                     {/* Name */}
                                                     <div className="mb-3">
                                                         <label className="form-label">Name</label>
@@ -708,7 +832,6 @@ const JoiningFormalities = ({
                                                                 </p>
                                                             )}
                                                     </div>
-
                                                     {/* Occupation */}
                                                     <div className="mb-3">
                                                         <label className="form-label">Occupation</label>
@@ -728,7 +851,6 @@ const JoiningFormalities = ({
                                                                 </p>
                                                             )}
                                                     </div>
-
                                                     {/* Relationship */}
                                                     <div className="mb-3">
                                                         <label className="form-label">Relationship</label>
@@ -748,7 +870,6 @@ const JoiningFormalities = ({
                                                                 </p>
                                                             )}
                                                     </div>
-
                                                     {/* Contact */}
                                                     <div>
                                                         <label className="form-label">Contact No & Address</label>
@@ -774,7 +895,6 @@ const JoiningFormalities = ({
                                         );
                                     })}
                                 </div>
-
                                 <div>
                                     <h5
                                         className="text-white p-2 rounded mt-4"
@@ -782,7 +902,6 @@ const JoiningFormalities = ({
                                     >
                                         Joining Letter
                                     </h5>
-
                                     <div className="border rounded p-4 shadow-sm">
                                         {/* Date */}
                                         <p>
@@ -802,20 +921,16 @@ const JoiningFormalities = ({
                                                     </p>
                                                 )}
                                         </p>
-
                                         <p className="mb-1">To</p>
                                         <p className="mb-0">NAT IT Services Pvt Ltd</p>
                                         <p className="mb-0">Plot No:21, Sruthi Sadan,</p>
                                         <p className="mb-3">Gachibowli, Hyderabad-32</p>
-
                                         {/* Subject */}
                                         <p>
                                             <strong>Subject:</strong>{" "}
                                             Joining Letter
                                         </p>
-
                                         <p>Dear Sir/Madam,</p>
-
                                         <p style={{ lineHeight: 2 }}>
                                             I am pleased to accept your offer and I have honor to inform you that I am
                                             joining in NAT IT Services Pvt Ltd from today (Date)
@@ -837,9 +952,7 @@ const JoiningFormalities = ({
                                             />
                                             . I would be kind enough if you accept this joining letter.
                                         </p>
-
                                         <p className="mt-4 mb-5">Yours Sincerely,</p>
-
                                         {/* Signature */}
                                         <p>
                                             Signature{" "}
@@ -855,7 +968,6 @@ const JoiningFormalities = ({
                                                 />
                                             </span>
                                         </p>
-
                                         {/* Errors */}
                                         {joiningFormValidation.touched.signatureName &&
                                             joiningFormValidation.errors.signatureName && (
@@ -879,9 +991,7 @@ const JoiningFormalities = ({
                     </Card>
                 </div>
             </div>
-
         </>
     );
 };
-
 export default JoiningFormalities;
