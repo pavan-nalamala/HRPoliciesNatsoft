@@ -6,7 +6,6 @@ import {
     Row,
     Col,
     Button,
-    Alert,
     Modal,
 } from "react-bootstrap";
 import { useFormik } from "formik";
@@ -20,6 +19,8 @@ import {
     formatDateForDisplay
 } from "./dateFieldUtils";
 import { getSP } from "../../../../pnpjsConfig";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 type PFDeclarationValues = {
     employeeName: string;
@@ -108,6 +109,7 @@ const initialValues: PFDeclarationValues = {
 export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, context }: ISequentialFormProps): JSX.Element {
     const [showSuccess, setShowSuccess] = React.useState(false);
     const [submitted, setSubmitted] = React.useState(false);
+    const formRef = React.useRef<HTMLDivElement>(null);
 
     const validationSchema = Yup.object().shape({
         employeeName: Yup.string().required("Employee Name is required"),
@@ -303,11 +305,101 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
 
                 console.error("Submit Error => ", error);
 
-           
+
                 alert(error?.message || "Submission failed");
             }
         }
     });
+
+    const downloadPDF = async () => {
+        const input = formRef.current;
+        if (!input) return;
+
+        const pdf = new jsPDF("p", "mm", "a4");
+
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+
+        const margin = 10;
+
+        const canvas = await html2canvas(input, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: "#ffffff",
+            scrollY: 0,
+            onclone: (clonedDocument) => {
+                clonedDocument
+                    .querySelectorAll<HTMLElement>('[data-pdf-hide="true"]')
+                    .forEach((element) => element.remove());
+            }
+        });
+
+        const imgWidth = pageWidth - margin * 2;
+        const pageHeightContent = pageHeight - margin * 2;
+        const pageCanvasHeight = Math.floor((pageHeightContent * canvas.width) / imgWidth);
+        const inputRect = input.getBoundingClientRect();
+        const canvasScale = canvas.width / inputRect.width;
+        const keepTogetherRanges = Array.from(input.querySelectorAll<HTMLElement>('[data-pdf-keep-together="true"]'))
+            .map((element) => {
+                const rect = element.getBoundingClientRect();
+                const start = Math.max(0, Math.floor((rect.top - inputRect.top) * canvasScale));
+                const end = Math.min(canvas.height, Math.ceil((rect.bottom - inputRect.top) * canvasScale));
+
+                return { start, end };
+            })
+            .filter((range) => range.end > range.start && range.end - range.start < pageCanvasHeight);
+
+        let sourceY = 0;
+
+        while (sourceY < canvas.height) {
+            let currentPageCanvasHeight = Math.min(pageCanvasHeight, canvas.height - sourceY);
+            const pageEnd = sourceY + currentPageCanvasHeight;
+            const splitRange = keepTogetherRanges.find(
+                (range) => range.start > sourceY && range.start < pageEnd && range.end > pageEnd
+            );
+
+            if (splitRange) {
+                currentPageCanvasHeight = splitRange.start - sourceY;
+            }
+
+            const pageCanvas = document.createElement("canvas");
+            pageCanvas.width = canvas.width;
+            pageCanvas.height = currentPageCanvasHeight;
+
+            const pageContext = pageCanvas.getContext("2d");
+            if (!pageContext) return;
+
+            pageContext.drawImage(
+                canvas,
+                0,
+                sourceY,
+                canvas.width,
+                currentPageCanvasHeight,
+                0,
+                0,
+                canvas.width,
+                currentPageCanvasHeight
+            );
+
+            if (sourceY > 0) pdf.addPage();
+
+            const pageImgData = pageCanvas.toDataURL("image/png");
+            const pageImgHeight = (currentPageCanvasHeight * imgWidth) / canvas.width;
+
+            pdf.addImage(
+                pageImgData,
+                "PNG",
+                margin,
+                margin,
+                imgWidth,
+                pageImgHeight
+            );
+
+            sourceY += currentPageCanvasHeight;
+        }
+
+        pdf.save("PF-Declaration.pdf");
+    };
 
     const handleExclusiveCheckboxChange = (
         selectedField:
@@ -347,7 +439,7 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
     }
 
     return (
-        <Container fluid className="py-4 bg-light">
+        <Container fluid className="py-4 bg-light no-break" ref={formRef} >
             <Card
                 className="mx-auto shadow border-0 rounded-4"
                 style={{ maxWidth: 1150 }}
@@ -359,10 +451,8 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
                     Form No.11 Declaration Form
                 </Card.Header>
                 <Card.Body className="p-4">
-                    {/* <Alert variant="light">
-                        
-                    </Alert> */}
-                        <h5 className="text-white p-2 rounded" style={{backgroundColor: "rgb(241, 130, 0)"}}>Employees Provident Fund Organisation Declaration Form</h5>
+
+                    <h5 className="text-white p-2 rounded" style={{ backgroundColor: "rgb(241, 130, 0)" }}>Employees Provident Fund Organisation Declaration Form</h5>
 
                     <Form onSubmit={formik.handleSubmit}>
                         <Row className="g-3">
@@ -449,7 +539,7 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
                                         <option value="">Select</option>
                                         <option>Male</option>
                                         <option>Female</option>
-                    <option>Others</option>
+                                        <option>Others</option>
                                     </Form.Select>
                                     {formik.touched.gender && formik.errors.gender && (
                                         <p className="text-danger small mb-0">
@@ -468,7 +558,7 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
                                         onBlur={formik.handleBlur}
                                     >
                                         <option value="">Select</option>
-                                        
+
                                         <option>Single</option>
                                         <option>Married</option>
                                         <option>divorce</option>
@@ -755,7 +845,7 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
                             </Col>
                         </Row>
 
-                        <h5 className="text-white p-2 rounded mt-3" style={{backgroundColor: "rgb(241, 130, 0)"}}>KYC Details</h5>
+                        <h5 className="text-white p-2 rounded mt-3" style={{ backgroundColor: "rgb(241, 130, 0)" }}>KYC Details</h5>
                         <Row className="g-3">
                             <Col md={4}>
                                 <Form.Control
@@ -1120,6 +1210,9 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
                             >
                                 Submit
                             </Button>
+                            <button type="button" data-pdf-hide="true" onClick={downloadPDF}>
+                                Download PDF
+                            </button>
                         </div>
                     </Form>
                 </Card.Body>

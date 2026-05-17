@@ -12,6 +12,9 @@ import {
 import SignatureUpload from './SignatureUpload';
 import moment from 'moment';
 import { getSP } from '../../../../pnpjsConfig';
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
+
 type NomineeRow = {
   nomineeNameAndAddress: string;
   relationship: string;
@@ -47,6 +50,8 @@ const InsuranceNominationForm = ({
   context,
   employeePFData
 }: ISequentialFormProps): JSX.Element => {
+  const formRef = React.useRef<HTMLDivElement>(null);
+
   React.useEffect(() => {
     if (!document.getElementById('bootstrap-css')) {
       const link = document.createElement('link');
@@ -203,10 +208,101 @@ const InsuranceNominationForm = ({
       formik.setFieldValue('signature', sharedEmployeeSignature).catch(() => undefined);
     }
   }, [sharedEmployeeSignature]);
+
+  const downloadPDF = async () => {
+    const input = formRef.current;
+    if (!input) return;
+
+    const pdf = new jsPDF("p", "mm", "a4");
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+
+    const margin = 10;
+
+    const canvas = await html2canvas(input, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      scrollY: 0,
+      onclone: (clonedDocument) => {
+        clonedDocument
+          .querySelectorAll<HTMLElement>('[data-pdf-hide="true"]')
+          .forEach((element) => element.remove());
+      }
+    });
+
+    const imgWidth = pageWidth - margin * 2;
+    const pageHeightContent = pageHeight - margin * 2;
+    const pageCanvasHeight = Math.floor((pageHeightContent * canvas.width) / imgWidth);
+    const inputRect = input.getBoundingClientRect();
+    const canvasScale = canvas.width / inputRect.width;
+    const keepTogetherRanges = Array.from(input.querySelectorAll<HTMLElement>('[data-pdf-keep-together="true"]'))
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        const start = Math.max(0, Math.floor((rect.top - inputRect.top) * canvasScale));
+        const end = Math.min(canvas.height, Math.ceil((rect.bottom - inputRect.top) * canvasScale));
+
+        return { start, end };
+      })
+      .filter((range) => range.end > range.start && range.end - range.start < pageCanvasHeight);
+
+    let sourceY = 0;
+
+    while (sourceY < canvas.height) {
+      let currentPageCanvasHeight = Math.min(pageCanvasHeight, canvas.height - sourceY);
+      const pageEnd = sourceY + currentPageCanvasHeight;
+      const splitRange = keepTogetherRanges.find(
+        (range) => range.start > sourceY && range.start < pageEnd && range.end > pageEnd
+      );
+
+      if (splitRange) {
+        currentPageCanvasHeight = splitRange.start - sourceY;
+      }
+
+      const pageCanvas = document.createElement("canvas");
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = currentPageCanvasHeight;
+
+      const pageContext = pageCanvas.getContext("2d");
+      if (!pageContext) return;
+
+      pageContext.drawImage(
+        canvas,
+        0,
+        sourceY,
+        canvas.width,
+        currentPageCanvasHeight,
+        0,
+        0,
+        canvas.width,
+        currentPageCanvasHeight
+      );
+
+      if (sourceY > 0) pdf.addPage();
+
+      const pageImgData = pageCanvas.toDataURL("image/png");
+      const pageImgHeight = (currentPageCanvasHeight * imgWidth) / canvas.width;
+
+      pdf.addImage(
+        pageImgData,
+        "PNG",
+        margin,
+        margin,
+        imgWidth,
+        pageImgHeight
+      );
+
+      sourceY += currentPageCanvasHeight;
+    }
+
+    pdf.save("Insurance-Nomination.pdf");
+  };
+
   return (
     <>
       <FormSection title="InsuranceNominationForm" />
-      <div>
+      <div ref={formRef} className="no-break">
         <Card className="shadow border-0 rounded-4 mx-auto">
           <Card.Body className="p-4 p-md-5">
             <div className="text-center mb-4">
@@ -651,6 +747,9 @@ const InsuranceNominationForm = ({
                 >
                   Submit Form
                 </Button>
+                <button type="button" data-pdf-hide="true" onClick={downloadPDF}>
+                  Download PDF
+                </button>
               </div>
             </Form>
           </Card.Body>
