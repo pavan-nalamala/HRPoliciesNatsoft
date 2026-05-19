@@ -167,6 +167,13 @@ const JoiningFormalities = ({
                 "Signature should be less than 200 KB",
                 (value: any) => {
                     if (!value) return false;
+
+                    // when value comes from sharedEmployeeSignature
+                    if (typeof value === "string") {
+                        return true;
+                    }
+
+                    // uploaded file validation
                     return value.size <= 200 * 1024;
                 }
             )
@@ -1080,10 +1087,16 @@ const JoiningFormalities = ({
                                     >
                                         Submit Form
                                     </Button>
+                                    <Button
+                                        type="button"
+                                        className="border-0 ms-2"
+                                        style={{ backgroundColor: "#f18200" }}
+                                        onClick={downloadPDF}
+                                    >
+                                        Download PDF
+                                    </Button>
                                 </div>
-                                <button type="button" data-pdf-hide="true" onClick={downloadPDF}>
-                                    Download PDF
-                                </button>
+
 
                             </Form>
                         </Card.Body>

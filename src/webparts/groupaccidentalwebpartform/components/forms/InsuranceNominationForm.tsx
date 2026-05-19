@@ -747,9 +747,14 @@ const InsuranceNominationForm = ({
                 >
                   Submit Form
                 </Button>
-                <button type="button" data-pdf-hide="true" onClick={downloadPDF}>
+                <Button
+                  type="button"
+                  className="border-0 ms-2"
+                  style={{ backgroundColor: "#f18200" }}
+                  onClick={downloadPDF}
+                >
                   Download PDF
-                </button>
+                </Button>
               </div>
             </Form>
           </Card.Body>
