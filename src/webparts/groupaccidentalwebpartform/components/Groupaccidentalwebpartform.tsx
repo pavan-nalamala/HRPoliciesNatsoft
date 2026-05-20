@@ -2,6 +2,7 @@ import * as React from 'react';
 import styles from './Groupaccidentalwebpartform.module.scss';
 import type { IGroupaccidentalwebpartformProps } from './IGroupaccidentalwebpartformProps';
 
+import { Modal } from 'react-bootstrap';
 import { SPHttpClient } from '@microsoft/sp-http';
 
 import {
@@ -11,7 +12,8 @@ import {
   NatItServicesHandbook,
   NatItServicesHrPolicyManual,
   PFDeclaration,
-  TeamLifeInsuranceNomination
+  TeamLifeInsuranceNomination,
+  ThankYouMessage
 } from './forms';
 
 type FormKey =
@@ -23,17 +25,27 @@ type FormKey =
   | 'natItServicesHrPolicyManual'
   | 'natItServicesHandbook';
 
+type ViewKey = FormKey | 'thankYou';
+
 interface IFormNavItem {
   key: FormKey;
   label: string;
 }
 
+interface IFormSubmissionCheck {
+  listTitle: string;
+  fieldName: string;
+  valueType: 'candidateId' | 'email';
+}
+
 interface IGroupaccidentalwebpartformState {
-  selectedForm: FormKey;
+  selectedForm: ViewKey;
   completedForms: Partial<Record<FormKey, boolean>>;
   sharedEmployeeSignature: string;
+  sharedDateOfBirth: string;
   currentUser: any;
   employeePFData: any[];
+  showThankYouModal: boolean;
 }
 
 const FORM_NAV_ITEMS: IFormNavItem[] = [
@@ -46,6 +58,44 @@ const FORM_NAV_ITEMS: IFormNavItem[] = [
   { key: 'pfDeclaration', label: 'PF Declaration' }
 ];
 
+const FORM_SUBMISSION_CHECKS: Record<FormKey, IFormSubmissionCheck> = {
+  natItServicesHandbook: {
+    listTitle: 'EmployeeHandBook',
+    fieldName: 'can_id',
+    valueType: 'candidateId'
+  },
+  natItServicesHrPolicyManual: {
+    listTitle: 'HRPolicyManual',
+    fieldName: 'can_id',
+    valueType: 'candidateId'
+  },
+  joiningFormalities: {
+    listTitle: 'JoiningFormalities',
+    fieldName: 'can_id',
+    valueType: 'candidateId'
+  },
+  teamLifeInsuranceNomination: {
+    listTitle: 'InsuranceNomination',
+    fieldName: 'can_id',
+    valueType: 'candidateId'
+  },
+  gratuityNominationForm: {
+    listTitle: 'GratuityNomination',
+    fieldName: 'can_id',
+    valueType: 'candidateId'
+  },
+  insuranceNominationForm: {
+    listTitle: 'PersonalAccidentalScheme',
+    fieldName: 'can_id',
+    valueType: 'candidateId'
+  },
+  pfDeclaration: {
+    listTitle: 'EPFDeclarationForm11',
+    fieldName: 'SubmittedEmail',
+    valueType: 'email'
+  }
+};
+
 export default class Groupaccidentalwebpartform extends React.Component<
   IGroupaccidentalwebpartformProps,
   IGroupaccidentalwebpartformState
@@ -55,8 +105,10 @@ export default class Groupaccidentalwebpartform extends React.Component<
     selectedForm: 'natItServicesHandbook',
     completedForms: {} as any,
     sharedEmployeeSignature: '',
+    sharedDateOfBirth: '',
     currentUser: null,
-    employeePFData: []
+    employeePFData: [],
+    showThankYouModal: false
   };
 
   private _isAdminUser(): boolean {
@@ -85,6 +137,27 @@ export default class Groupaccidentalwebpartform extends React.Component<
     }
 
     return FORM_NAV_ITEMS;
+  }
+
+  private _escapeODataString(value: string): string {
+    return value.replace(/'/g, "''");
+  }
+
+  private _getNextIncompleteForm(
+    completedForms: Partial<Record<FormKey, boolean>>
+  ): ViewKey {
+
+    const visibleTabs = this._getVisibleTabs();
+    const nextIncomplete = visibleTabs.find(item => !completedForms[item.key]);
+
+    return nextIncomplete?.key ?? 'thankYou';
+  }
+
+  private _areAllFormsCompleted(
+    completedForms: Partial<Record<FormKey, boolean>>
+  ): boolean {
+
+    return FORM_NAV_ITEMS.every(item => !!completedForms[item.key]);
   }
 
   public componentDidMount(): void {
@@ -134,17 +207,73 @@ export default class Groupaccidentalwebpartform extends React.Component<
         () => {
           const isGauge = this._isAdminUser();
 
-          this.setState({
-            selectedForm: isGauge
-              ? 'joiningFormalities'
-              : 'natItServicesHandbook'
-          });
+          if (isGauge) {
+            this.setState({ selectedForm: 'joiningFormalities' });
+            return;
+          }
+
+          void this._loadCompletedForms(email);
         }
       );
 
     } catch (error) {
       console.error("SharePoint List Error:", error);
     }
+  };
+
+  private _loadCompletedForms = async (email: string): Promise<void> => {
+
+    const candidateId = this.state.employeePFData?.[0]?.ID;
+
+    if (!candidateId) {
+      this.setState({ selectedForm: 'natItServicesHandbook' });
+      return;
+    }
+
+    const siteUrl = this.props.context.pageContext.web.absoluteUrl;
+    const completedForms: Partial<Record<FormKey, boolean>> = {};
+
+    await Promise.all(
+      FORM_NAV_ITEMS.map(async item => {
+        const check = FORM_SUBMISSION_CHECKS[item.key];
+        const rawValue =
+          check.valueType === 'candidateId'
+            ? String(candidateId)
+            : email;
+        const filter =
+          `${check.fieldName} eq '${this._escapeODataString(rawValue)}'`;
+        const url =
+          `${siteUrl}/_api/web/lists/getbytitle('${check.listTitle}')/items` +
+          `?$select=Id&$top=1&$filter=${encodeURIComponent(filter)}`;
+
+        try {
+          const response = await this.props.context.spHttpClient.get(
+            url,
+            SPHttpClient.configurations.v1
+          );
+
+          if (!response.ok) {
+            console.error(`Unable to check ${check.listTitle}`);
+            return;
+          }
+
+          const data = await response.json();
+          completedForms[item.key] =
+            Array.isArray(data.value) && data.value.length > 0;
+
+        } catch (error) {
+          console.error(`Submission check failed for ${check.listTitle}:`, error);
+        }
+      })
+    );
+
+    const nextForm = this._getNextIncompleteForm(completedForms);
+
+    this.setState({
+      completedForms,
+      selectedForm: nextForm === 'thankYou' ? 'pfDeclaration' : nextForm,
+      showThankYouModal: false
+    });
   };
 
   private _handleTabClick = (
@@ -156,32 +285,37 @@ export default class Groupaccidentalwebpartform extends React.Component<
     this.setState({ selectedForm: key });
   };
 
-  private _isFormEnabled(key: FormKey): boolean {
+  private _isFormEnabled(): boolean {
 
-    const index = FORM_NAV_ITEMS.findIndex(i => i.key === key);
-
-    if (index <= 0) return true;
-
-    const prevKey = FORM_NAV_ITEMS[index - 1].key;
-
-    return !!this.state.completedForms[prevKey];
+    return true;
   }
 
   private _handleFormComplete = (key: FormKey): void => {
 
     this.setState(prevState => {
 
-      const index = FORM_NAV_ITEMS.findIndex(i => i.key === key);
-      const nextKey = FORM_NAV_ITEMS[index + 1]?.key;
+      const completedForms: Partial<Record<FormKey, boolean>> = {
+        ...prevState.completedForms,
+        [key]: true
+      };
+
+      const nextForm = this._getNextIncompleteForm(completedForms);
+      const shouldShowThankYouModal =
+        key === 'pfDeclaration' && this._areAllFormsCompleted(completedForms);
 
       return {
-        completedForms: {
-          ...prevState.completedForms,
-          [key]: true
-        },
-        selectedForm: nextKey ?? key
+        completedForms,
+        selectedForm: nextForm === 'thankYou' ? key : nextForm,
+        sharedEmployeeSignature: prevState.sharedEmployeeSignature,
+        sharedDateOfBirth: prevState.sharedDateOfBirth,
+        showThankYouModal: shouldShowThankYouModal
       };
     });
+  };
+
+  private _handleThankYouClose = (): void => {
+
+    this.setState({ showThankYouModal: false });
   };
 
   private _handleEmployeeSignatureChange = (value: string): void => {
@@ -191,9 +325,16 @@ export default class Groupaccidentalwebpartform extends React.Component<
     });
   };
 
+  private _handleDateOfBirthChange = (value: string): void => {
+
+    this.setState({
+      sharedDateOfBirth: value
+    });
+  };
+
   private _renderFormByKey(formKey: FormKey): React.ReactElement {
 
-    const { sharedEmployeeSignature, employeePFData } = this.state;
+    const { sharedEmployeeSignature, sharedDateOfBirth, employeePFData } = this.state;
 
     const spHttpClient = this.props.context.spHttpClient;
     const siteUrl = this.props.context.pageContext.web.absoluteUrl;
@@ -210,12 +351,15 @@ export default class Groupaccidentalwebpartform extends React.Component<
             onComplete={() => this._handleFormComplete('joiningFormalities')}
             sharedEmployeeSignature={sharedEmployeeSignature}
             onEmployeeSignatureChange={this._handleEmployeeSignatureChange}
+            sharedDateOfBirth={sharedDateOfBirth}
+            onSharedDateOfBirthChange={this._handleDateOfBirthChange}
           />
         );
 
       case 'teamLifeInsuranceNomination':
         return (
           <TeamLifeInsuranceNomination
+            context={this.props.context}
             spHttpClient={spHttpClient}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
@@ -224,12 +368,15 @@ export default class Groupaccidentalwebpartform extends React.Component<
             }
             sharedEmployeeSignature={sharedEmployeeSignature}
             onEmployeeSignatureChange={this._handleEmployeeSignatureChange}
+            sharedDateOfBirth={sharedDateOfBirth}
+            onSharedDateOfBirthChange={this._handleDateOfBirthChange}
           />
         );
 
       case 'gratuityNominationForm':
         return (
           <GratuityNominationForm
+            context={this.props.context}
             spHttpClient={spHttpClient}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
@@ -238,6 +385,8 @@ export default class Groupaccidentalwebpartform extends React.Component<
             }
             sharedEmployeeSignature={sharedEmployeeSignature}
             onEmployeeSignatureChange={this._handleEmployeeSignatureChange}
+            sharedDateOfBirth={sharedDateOfBirth}
+            onSharedDateOfBirthChange={this._handleDateOfBirthChange}
           />
         );
 
@@ -252,6 +401,8 @@ export default class Groupaccidentalwebpartform extends React.Component<
             }
             sharedEmployeeSignature={sharedEmployeeSignature}
             onEmployeeSignatureChange={this._handleEmployeeSignatureChange}
+            sharedDateOfBirth={sharedDateOfBirth}
+            onSharedDateOfBirthChange={this._handleDateOfBirthChange}
           />
         );
 
@@ -262,6 +413,9 @@ export default class Groupaccidentalwebpartform extends React.Component<
             spHttpClient={spHttpClient}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
+            isSubmitted={!!this.state.completedForms.pfDeclaration}
+            sharedDateOfBirth={sharedDateOfBirth}
+            onSharedDateOfBirthChange={this._handleDateOfBirthChange}
             onComplete={() =>
               this._handleFormComplete('pfDeclaration')
             }
@@ -274,6 +428,7 @@ export default class Groupaccidentalwebpartform extends React.Component<
             context={this.props.context}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
+            isSubmitted={!!this.state.completedForms.natItServicesHrPolicyManual}
             onComplete={() =>
               this._handleFormComplete('natItServicesHrPolicyManual')
             }
@@ -286,6 +441,7 @@ export default class Groupaccidentalwebpartform extends React.Component<
             spHttpClient={spHttpClient}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
+            isSubmitted={!!this.state.completedForms.natItServicesHandbook}
             onComplete={() =>
               this._handleFormComplete('natItServicesHandbook')
             }
@@ -299,7 +455,7 @@ export default class Groupaccidentalwebpartform extends React.Component<
 
   public render(): React.ReactElement<IGroupaccidentalwebpartformProps> {
 
-    const { selectedForm } = this.state;
+    const { selectedForm, showThankYouModal } = this.state;
 
     return (
       <section>
@@ -308,7 +464,7 @@ export default class Groupaccidentalwebpartform extends React.Component<
           {this._getVisibleTabs().map(item => {
 
             const isActive = selectedForm === item.key;
-            const isEnabled = this._isFormEnabled(item.key);
+            const isEnabled = this._isFormEnabled();
 
             return (
               <button
@@ -332,6 +488,16 @@ export default class Groupaccidentalwebpartform extends React.Component<
             {this._renderFormByKey(item.key)}
           </div>
         ))}
+
+        <Modal
+          show={showThankYouModal}
+          onHide={this._handleThankYouClose}
+          centered
+        >
+          <Modal.Body className="text-center p-4">
+            <ThankYouMessage />
+          </Modal.Body>
+        </Modal>
 
       </section>
     );

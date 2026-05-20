@@ -5,8 +5,10 @@ import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import {
     createDateValueChangeHandler,
+    createMatchingDateValidation,
     createDateValidation,
-    DatePickerInput
+    DatePickerInput,
+    formatDateInput
 } from './dateFieldUtils';
 import SignatureUpload from './SignatureUpload';
 import { getSP } from '../../../../pnpjsConfig';
@@ -14,6 +16,12 @@ import type { ISequentialFormProps } from './ISequentialFormProps';
 import moment from 'moment';
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import {
+    candidateFieldNames,
+    getCandidateDateValue,
+    getCandidateValue,
+    setFieldIfEmpty
+} from './candidateAutoFillUtils';
 
 type EducationRow = {
     qualification: string;
@@ -34,6 +42,8 @@ const JoiningFormalities = ({
     onEmployeeSignatureChange,
     context,
     employeePFData,
+    sharedDateOfBirth,
+    onSharedDateOfBirthChange,
 }: ISequentialFormProps): JSX.Element => {
     const [getDepartments, setGetDepartments] = React.useState<any[]>([]);
     const [getDesignations, setGetDesignations] = React.useState<any[]>([]);
@@ -49,13 +59,23 @@ const JoiningFormalities = ({
             document.head.appendChild(link);
         }
     }, []);
+    const commonDateOfBirth =
+        sharedDateOfBirth || getCandidateDateValue(employeePFData, candidateFieldNames.dateOfBirth);
+    const commonDateOfBirthMessage = commonDateOfBirth
+        ? `Date of Birth must match the employee Date of Birth (${commonDateOfBirth})`
+        : "Date of Birth must match the employee Date of Birth";
+
     const joiningValidationSchema = Yup.object().shape({
         employeeId: Yup.string(),
         designation: Yup.string(),
         reportingTo: Yup.string(),
         department: Yup.string(),
         fullName: Yup.string().required("Full Name is required"),
-        dob: createDateValidation("Date of Birth is required", "Date of Birth must be in DD/MM/YYYY format")
+        dob: createMatchingDateValidation(
+            createDateValidation("Date of Birth is required", "Date of Birth must be in DD/MM/YYYY format"),
+            commonDateOfBirth,
+            commonDateOfBirthMessage
+        )
             .test(
                 "dob-age-validation",
                 "Minimum age must be 18 years",
@@ -312,10 +332,39 @@ const JoiningFormalities = ({
         }
     });
     React.useEffect(() => {
+        const autoFill = async (): Promise<void> => {
+            const designation = getCandidateValue(employeePFData, candidateFieldNames.designation);
+            const joiningDate = getCandidateDateValue(employeePFData, candidateFieldNames.joiningDate);
+
+            await setFieldIfEmpty(joiningFormValidation.values, joiningFormValidation.setFieldValue, 'employeeId', getCandidateValue(employeePFData, candidateFieldNames.employeeId));
+            await setFieldIfEmpty(joiningFormValidation.values, joiningFormValidation.setFieldValue, 'designation', designation);
+            await setFieldIfEmpty(joiningFormValidation.values, joiningFormValidation.setFieldValue, 'department', getCandidateValue(employeePFData, candidateFieldNames.department));
+            await setFieldIfEmpty(joiningFormValidation.values, joiningFormValidation.setFieldValue, 'fullName', getCandidateValue(employeePFData, candidateFieldNames.employeeName));
+            await setFieldIfEmpty(joiningFormValidation.values, joiningFormValidation.setFieldValue, 'dob', getCandidateDateValue(employeePFData, candidateFieldNames.dateOfBirth));
+            await setFieldIfEmpty(joiningFormValidation.values, joiningFormValidation.setFieldValue, 'actualDob', getCandidateDateValue(employeePFData, candidateFieldNames.dateOfBirth));
+            await setFieldIfEmpty(joiningFormValidation.values, joiningFormValidation.setFieldValue, 'panNo', getCandidateValue(employeePFData, candidateFieldNames.panNo));
+            await setFieldIfEmpty(joiningFormValidation.values, joiningFormValidation.setFieldValue, 'presentAddress', getCandidateValue(employeePFData, candidateFieldNames.address));
+            await setFieldIfEmpty(joiningFormValidation.values, joiningFormValidation.setFieldValue, 'permanentAddress', getCandidateValue(employeePFData, candidateFieldNames.address));
+            await setFieldIfEmpty(joiningFormValidation.values, joiningFormValidation.setFieldValue, 'fatherName', getCandidateValue(employeePFData, candidateFieldNames.fatherOrHusbandName));
+            await setFieldIfEmpty(joiningFormValidation.values, joiningFormValidation.setFieldValue, 'maritalStatus', getCandidateValue(employeePFData, candidateFieldNames.maritalStatus));
+            await setFieldIfEmpty(joiningFormValidation.values, joiningFormValidation.setFieldValue, 'spouseName', getCandidateValue(employeePFData, candidateFieldNames.spouseName));
+            await setFieldIfEmpty(joiningFormValidation.values, joiningFormValidation.setFieldValue, 'joiningDateText', joiningDate);
+            await setFieldIfEmpty(joiningFormValidation.values, joiningFormValidation.setFieldValue, 'designationText', designation);
+        };
+
+        void autoFill();
+    }, [employeePFData]);
+    React.useEffect(() => {
         if (sharedEmployeeSignature && joiningFormValidation.values.signatureName !== sharedEmployeeSignature) {
             joiningFormValidation.setFieldValue('signatureName', sharedEmployeeSignature).catch(() => undefined);
         }
     }, [sharedEmployeeSignature]);
+    const handleDateOfBirthChange = (value: string): void => {
+        const formattedValue = formatDateInput(value);
+        joiningFormValidation.setFieldValue("dob", formattedValue).catch(() => undefined);
+        onSharedDateOfBirthChange?.(formattedValue);
+    };
+
     const getDepart = async (): Promise<void> => {
         try {
             const sp = getSP(context);
@@ -546,113 +595,107 @@ const JoiningFormalities = ({
                                     </div>
                                 </div>
                                 {/* Employee Details */}
-                                <h5
-                                    className="text-white p-2 rounded"
-                                    style={{ backgroundColor: "#f18200" }}
-                                >
-                                    Employee Details
-                                </h5>
-                                <Row className="mb-3">
-                                    <Col md={6}>
-                                        <Form.Label>Employee ID</Form.Label>
-                                        <Form.Control
-                                            name="employeeId"
-                                            value={joiningFormValidation.values.employeeId}
-                                            onChange={joiningFormValidation.handleChange}
-                                            onBlur={joiningFormValidation.handleBlur}
-                                            disabled={employeePFData?.EmailID !== 'hr@natit.in'}
-                                        />
-                                        {joiningFormValidation.touched.employeeId &&
-                                            joiningFormValidation.errors.employeeId && (
-                                                <p className="text-danger small">
-                                                    {joiningFormValidation.errors.employeeId}
-                                                </p>
-                                            )}
-                                    </Col>
-                                    <Col md={6}>
-                                        <Form.Label>Designation</Form.Label>
-                                        {/* <Form.Control
-                                            name="designation"
-                                            value={joiningFormValidation.values.designation}
-                                            onChange={joiningFormValidation.handleChange}
-                                            onBlur={joiningFormValidation.handleBlur}
-                                        /> */}
-                                        <Form.Select
-                                            name="designation"
-                                            value={joiningFormValidation.values.designation}
-                                            onChange={joiningFormValidation.handleChange}
-                                            onBlur={joiningFormValidation.handleBlur}
-                                            disabled={employeePFData?.EmailID !== 'hr@natit.in'}
+                                {employeePFData?.EmailID === 'hr@natit.in' && (
+                                    <div>
+                                        <h5
+                                            className="text-white p-2 rounded"
+                                            style={{ backgroundColor: "#f18200" }}
                                         >
-                                            <option value="">Select Designation</option>
-                                            {getDesignations?.map((desig) => (
-                                                <option key={desig.ID} value={desig.Designations}>
-                                                    {desig.Designations}
-                                                </option>
-                                            ))}
-                                        </Form.Select>
-                                        {joiningFormValidation.touched.designation &&
-                                            joiningFormValidation.errors.designation && (
-                                                <p className="text-danger small">
-                                                    {joiningFormValidation.errors.designation}
-                                                </p>
-                                            )}
-                                    </Col>
-                                </Row>
-                                <Row className="mb-3">
-                                    <Col md={6}>
-                                        <Form.Label>Reporting To</Form.Label>
-                                        <Form.Control
-                                            name="reportingTo"
-                                            value={joiningFormValidation.values.reportingTo}
-                                            onChange={joiningFormValidation.handleChange}
-                                            onBlur={joiningFormValidation.handleBlur}
-                                            disabled={employeePFData?.EmailID !== 'hr@natit.in'}
-                                        />
-                                        {joiningFormValidation.touched.reportingTo &&
-                                            joiningFormValidation.errors.reportingTo && (
-                                                <p className="text-danger small">
-                                                    {joiningFormValidation.errors.reportingTo}
-                                                </p>
-                                            )}
-                                    </Col>
-                                    <Col md={6}>
-                                        <Form.Label>Department</Form.Label>
-                                        {/* <Form.Control
-                                            name="department"
-                                            value={joiningFormValidation.values.department}
-                                            onChange={joiningFormValidation.handleChange}
-                                            onBlur={joiningFormValidation.handleBlur}
-                                            // disabled={employeePFData?.EmailID !== 'hr@natit.in'}
-                                        /> */}
-                                        <Form.Select
-                                            name="department"
-                                            value={joiningFormValidation.values.department}
-                                            onChange={joiningFormValidation.handleChange}
-                                            onBlur={joiningFormValidation.handleBlur}
-                                            disabled={employeePFData?.EmailID !== 'hr@natit.in'}
-                                        >
-                                            <option value="">Select Department</option>
-                                            {getDepartments?.map((dept) => (
-                                                <option key={dept.ID} value={dept.Department}>
-                                                    {dept.Department}
-                                                </option>
-                                            ))}
-                                        </Form.Select>
-                                        {joiningFormValidation.touched.department &&
-                                            joiningFormValidation.errors.department && (
-                                                <p className="text-danger small">
-                                                    {joiningFormValidation.errors.department}
-                                                </p>
-                                            )}
-                                    </Col>
-                                </Row>
+                                            Employee Details Testing the app
+                                         </h5>
+                                        <Row className="mb-3">
+                                            <Col md={6}>
+                                                <Form.Label>Employee ID</Form.Label>
+                                                <Form.Control
+                                                    name="employeeId"
+                                                    value={joiningFormValidation.values.employeeId}
+                                                    onChange={joiningFormValidation.handleChange}
+                                                    onBlur={joiningFormValidation.handleBlur}
+                                                    
+                                                />
+                                                {joiningFormValidation.touched.employeeId &&
+                                                    joiningFormValidation.errors.employeeId && (
+                                                        <p className="text-danger small">
+                                                            {joiningFormValidation.errors.employeeId}
+                                                        </p>
+                                                    )}
+                                            </Col>
+                                            <Col md={6}>
+                                                <Form.Label>Designation</Form.Label>
+                                                
+                                                <Form.Select
+                                                    name="designation"
+                                                    value={joiningFormValidation.values.designation}
+                                                    onChange={joiningFormValidation.handleChange}
+                                                    onBlur={joiningFormValidation.handleBlur}
+                                                    
+                                                >
+                                                    <option value="">Select Designation</option>
+                                                    {getDesignations?.map((desig) => (
+                                                        <option key={desig.ID} value={desig.Designations}>
+                                                            {desig.Designations}
+                                                        </option>
+                                                    ))}
+                                                </Form.Select>
+                                                {joiningFormValidation.touched.designation &&
+                                                    joiningFormValidation.errors.designation && (
+                                                        <p className="text-danger small">
+                                                            {joiningFormValidation.errors.designation}
+                                                        </p>
+                                                    )}
+                                            </Col>
+                                        </Row>
+                                        <Row className="mb-3">
+                                            <Col md={6}>
+                                                <Form.Label>Reporting To</Form.Label>
+                                                <Form.Control
+                                                    name="reportingTo"
+                                                    value={joiningFormValidation.values.reportingTo}
+                                                    onChange={joiningFormValidation.handleChange}
+                                                    onBlur={joiningFormValidation.handleBlur}
+                                                    
+                                                />
+                                                {joiningFormValidation.touched.reportingTo &&
+                                                    joiningFormValidation.errors.reportingTo && (
+                                                        <p className="text-danger small">
+                                                            {joiningFormValidation.errors.reportingTo}
+                                                        </p>
+                                                    )}
+                                            </Col>
+                                            <Col md={6}>
+                                                <Form.Label>Department</Form.Label>
+
+                                                <Form.Select
+                                                    name="department"
+                                                    value={joiningFormValidation.values.department}
+                                                    onChange={joiningFormValidation.handleChange}
+                                                    onBlur={joiningFormValidation.handleBlur}
+                                                    
+                                                >
+                                                    <option value="">Select Department</option>
+                                                    {getDepartments?.map((dept) => (
+                                                        <option key={dept.ID} value={dept.Department}>
+                                                            {dept.Department}
+                                                        </option>
+                                                    ))}
+                                                </Form.Select>
+                                                {joiningFormValidation.touched.department &&
+                                                    joiningFormValidation.errors.department && (
+                                                        <p className="text-danger small">
+                                                            {joiningFormValidation.errors.department}
+                                                        </p>
+                                                    )}
+                                            </Col>
+                                        </Row>
+                                    </div>
+                                )}
+
                                 {/* Personal Info */}
                                 <h5
                                     className="text-white p-2 rounded"
                                     style={{ backgroundColor: "#f18200" }}
                                 >
-                                    Personal Information
+                                    Personal Information testing 
                                 </h5>
                                 <Row className="mb-3">
                                     <Col md={6}>
@@ -675,7 +718,7 @@ const JoiningFormalities = ({
                                         <DatePickerInput
                                             name="dob"
                                             value={joiningFormValidation.values.dob}
-                                            onValueChange={createDateValueChangeHandler(joiningFormValidation.setFieldValue, "dob")}
+                                            onValueChange={handleDateOfBirthChange}
                                             onBlur={joiningFormValidation.handleBlur}
                                         />
                                         {joiningFormValidation.touched.dob &&
@@ -1087,6 +1130,7 @@ const JoiningFormalities = ({
                                     >
                                         Submit Form
                                     </Button>
+                                    {employeePFData?.EmailID === 'hr@natit.in' && (
                                     <Button
                                         type="button"
                                         className="border-0 ms-2"
@@ -1095,6 +1139,7 @@ const JoiningFormalities = ({
                                     >
                                         Download PDF
                                     </Button>
+                                    )}
                                 </div>
 
 
@@ -1102,7 +1147,7 @@ const JoiningFormalities = ({
                         </Card.Body>
                     </Card>
                 </div>
-            </div>
+            </div >
         </>
     );
 };

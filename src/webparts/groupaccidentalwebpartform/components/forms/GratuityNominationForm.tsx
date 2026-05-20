@@ -14,6 +14,12 @@ import { getSP } from '../../../../pnpjsConfig';
 import moment from 'moment';
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import {
+  candidateFieldNames,
+  getCandidateDateValue,
+  getCandidateValue,
+  setFieldIfEmpty
+} from './candidateAutoFillUtils';
 
 
 type NomineeRow = {
@@ -328,6 +334,29 @@ const GratuityNominationForm = ({
     }
   });
 
+
+  React.useEffect(() => {
+    const autoFill = async (): Promise<void> => {
+      const employeeName = getCandidateValue(employeePFData, candidateFieldNames.employeeName);
+      const permanentAddress = getCandidateValue(employeePFData, candidateFieldNames.address);
+
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'employeeIntroName', employeeName);
+      await setFieldIfEmpty(
+        formik.values,
+        formik.setFieldValue,
+        'employeeStatementNameAndAddress',
+        [employeeName, permanentAddress].filter(Boolean).join(', ')
+      );
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'sex', getCandidateValue(employeePFData, candidateFieldNames.gender));
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'departmentBranchSection', getCandidateValue(employeePFData, candidateFieldNames.department));
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'employeeId', getCandidateValue(employeePFData, candidateFieldNames.employeeId));
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'dateOfJoining', getCandidateDateValue(employeePFData, candidateFieldNames.joiningDate));
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'permanentAddress', permanentAddress);
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'designation', getCandidateValue(employeePFData, candidateFieldNames.designation));
+    };
+
+    void autoFill();
+  }, [employeePFData]);
 
 
   React.useEffect(() => {
@@ -829,20 +858,22 @@ const GratuityNominationForm = ({
                       </p>
                     )}
                 </Col>
+                {employeePFData?.EmailID === 'hr@natit.in' && (
+                  <Col md={3}>
+                    <Form.Label>EMP ID</Form.Label>
+                    <Form.Control
+                      name="employeeId"
+                      value={formik.values.employeeId}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
 
-                <Col md={3}>
-                  <Form.Label>EMP ID</Form.Label>
-                  <Form.Control
-                    name="employeeId"
-                    value={formik.values.employeeId}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    disabled={employeePFData?.EmailID !== 'hr@natit.in'}
-                  />
-                  {formik.touched.employeeId && formik.errors.employeeId && (
-                    <p className="text-danger small mb-0">{formik.errors.employeeId}</p>
-                  )}
-                </Col>
+                    />
+                    {formik.touched.employeeId && formik.errors.employeeId && (
+                      <p className="text-danger small mb-0">{formik.errors.employeeId}</p>
+                    )}
+                  </Col>
+                )}
+
 
                 <Col md={3}>
                   <Form.Label>Date of Joining</Form.Label>
@@ -1098,15 +1129,16 @@ const GratuityNominationForm = ({
                 >
                   Submit Form
                 </Button>
-
-                <Button
-                  type="button"
-                  className="border-0 ms-2"
-                  style={{ backgroundColor: "#f18200" }}
-                  onClick={downloadPDF}
-                >
-                  Download PDF
-                </Button>
+                {employeePFData?.EmailID === 'hr@natit.in' && (
+                  <Button
+                    type="button"
+                    className="border-0 ms-2"
+                    style={{ backgroundColor: "#f18200" }}
+                    onClick={downloadPDF}
+                  >
+                    Download PDF
+                  </Button>
+                )}
               </div>
             </Form>
           </Card.Body>

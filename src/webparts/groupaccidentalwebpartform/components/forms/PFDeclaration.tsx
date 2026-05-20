@@ -6,7 +6,7 @@ import {
     Row,
     Col,
     Button,
-    Modal,
+    Alert,
 } from "react-bootstrap";
 import { useFormik } from "formik";
 import * as Yup from "yup";
@@ -14,6 +14,7 @@ import moment from "moment";
 import type { ISequentialFormProps } from "./ISequentialFormProps";
 import {
     createDateValueChangeHandler,
+    createMatchingDateValidation,
     createDateValidation,
     DatePickerInput,
     formatDateForDisplay
@@ -21,6 +22,12 @@ import {
 import { getSP } from "../../../../pnpjsConfig";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import {
+    candidateFieldNames,
+    getCandidateDateValue,
+    getCandidateValue,
+    setFieldIfEmpty
+} from "./candidateAutoFillUtils";
 
 type PFDeclarationValues = {
     employeeName: string;
@@ -106,14 +113,23 @@ const initialValues: PFDeclarationValues = {
     employerDate: "",
 };
 
-export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, context }: ISequentialFormProps): JSX.Element {
-    const [showSuccess, setShowSuccess] = React.useState(false);
-    const [submitted, setSubmitted] = React.useState(false);
+
+export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, context, isSubmitted, employeePFData, sharedDateOfBirth }: ISequentialFormProps): JSX.Element {
     const formRef = React.useRef<HTMLDivElement>(null);
+
+    const commonDateOfBirth =
+        sharedDateOfBirth || getCandidateDateValue(employeePFData, candidateFieldNames.dateOfBirth);
+    const commonDateOfBirthMessage = commonDateOfBirth
+        ? `Date of Birth must match the employee Date of Birth (${commonDateOfBirth})`
+        : "Date of Birth must match the employee Date of Birth";
 
     const validationSchema = Yup.object().shape({
         employeeName: Yup.string().required("Employee Name is required"),
-        dateOfBirth: createDateValidation("Date of Birth is required", "Date of Birth must be in DD/MM/YYYY format"),
+        dateOfBirth: createMatchingDateValidation(
+            createDateValidation("Date of Birth is required", "Date of Birth must be in DD/MM/YYYY format"),
+            commonDateOfBirth,
+            commonDateOfBirthMessage
+        ),
         relationType: Yup.string().required("Please select Father or Spouse"),
         fatherOrSpouseName: Yup.string().required("Father / Spouse is required"),
         gender: Yup.string().required("Gender is required"),
@@ -295,11 +311,7 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
                             new Date().toISOString()
                     });
 
-                alert("Form submitted successfully");
-
-                formik.resetForm();
-
-                setSubmitted(true);
+                onComplete?.();
 
             } catch (error: any) {
 
@@ -310,6 +322,21 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
             }
         }
     });
+
+    React.useEffect(() => {
+        const autoFill = async (): Promise<void> => {
+            await setFieldIfEmpty(formik.values, formik.setFieldValue, "employeeName", getCandidateValue(employeePFData, candidateFieldNames.employeeName));
+            await setFieldIfEmpty(formik.values, formik.setFieldValue, "dateOfBirth", getCandidateDateValue(employeePFData, candidateFieldNames.dateOfBirth));
+            await setFieldIfEmpty(formik.values, formik.setFieldValue, "fatherOrSpouseName", getCandidateValue(employeePFData, candidateFieldNames.fatherOrHusbandName));
+            await setFieldIfEmpty(formik.values, formik.setFieldValue, "gender", getCandidateValue(employeePFData, candidateFieldNames.gender));
+            await setFieldIfEmpty(formik.values, formik.setFieldValue, "maritalStatus", getCandidateValue(employeePFData, candidateFieldNames.maritalStatus));
+            await setFieldIfEmpty(formik.values, formik.setFieldValue, "email", getCandidateValue(employeePFData, candidateFieldNames.email));
+            await setFieldIfEmpty(formik.values, formik.setFieldValue, "mobileNo", getCandidateValue(employeePFData, candidateFieldNames.mobile));
+            await setFieldIfEmpty(formik.values, formik.setFieldValue, "pan", getCandidateValue(employeePFData, candidateFieldNames.panNo));
+        };
+
+        void autoFill();
+    }, [employeePFData]);
 
     const downloadPDF = async () => {
         const input = formRef.current;
@@ -424,19 +451,6 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
     };
 
     const currentDate = formatDateForDisplay(new Date());
-
-    if (submitted) {
-        return (
-            <Container className="py-5">
-                <Card className="shadow rounded-4 text-center p-5">
-                    <h3>You have submitted this form!</h3>
-                    <Button href="#" className="mt-3">
-                        My Request
-                    </Button>
-                </Card>
-            </Container>
-        );
-    }
 
     return (
         <Container fluid className="py-4 bg-light no-break" ref={formRef} >
@@ -969,232 +983,240 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
                                             {formik.errors.declarationAccepted}
                                         </p>
                                     )}
+                                {employeePFData?.EmailID !== 'hr@natit.in' && (
+                                    <Card className="mt-4 ">
+                                        <Card.Header
+                                            className="fw-bold text-center text-uppercase text-white"
+                                            style={{
+                                                backgroundColor: "rgb(241, 130, 0)",
+                                                fontSize: "18px",
+                                                color: "#fff"
+                                            }}
+                                        >
+                                            Declaration By Present Employer
+                                        </Card.Header>
 
-                                <Card className="mt-4 ">
-                                    <Card.Header
-                                        className="fw-bold text-center text-uppercase text-white"
-                                        style={{
-                                            backgroundColor: "rgb(241, 130, 0)",
-                                            fontSize: "18px",
-                                            color: "#fff"
-                                        }}
-                                    >
-                                        Declaration By Present Employer
-                                    </Card.Header>
-
-                                    <Card.Body
-                                        style={{
-                                            fontSize: "14px",
-                                            lineHeight: "1.6"
-                                        }}
-                                    >
-                                        <div className="mb-3">
-                                            <strong>A.</strong>{" "}
-                                            The member Mr./Ms./Mrs.
-                                            <Form.Control
-                                                name="employerMemberName"
-                                                type="text"
-                                                className="d-inline-block mx-2"
-                                                style={{ width: "220px" }}
-                                                value={formik.values.employerMemberName}
-                                                onChange={formik.handleChange}
-                                            />
-                                            has joined on
-                                            <span className="d-inline-block mx-2" style={{ width: "220px" }}>
-                                                <DatePickerInput
-                                                    name="employerJoinDate"
-                                                    value={formik.values.employerJoinDate}
-                                                    onValueChange={createDateValueChangeHandler(formik.setFieldValue, "employerJoinDate")}
+                                        <Card.Body
+                                            style={{
+                                                fontSize: "14px",
+                                                lineHeight: "1.6"
+                                            }}
+                                        >
+                                            <div className="mb-3">
+                                                <strong>A.</strong>{" "}
+                                                The member Mr./Ms./Mrs.
+                                                <Form.Control
+                                                    name="employerMemberName"
+                                                    type="text"
+                                                    className="d-inline-block mx-2"
+                                                    style={{ width: "220px" }}
+                                                    value={formik.values.employerMemberName}
+                                                    onChange={formik.handleChange}
                                                 />
-                                            </span>
-                                            and has been allotted PF Member ID
-                                            <Form.Control
-                                                name="employerPfMemberId"
-                                                type="text"
-                                                className="d-inline-block mx-2 mt-2"
-                                                style={{ width: "220px" }}
-                                                value={formik.values.employerPfMemberId}
-                                                onChange={formik.handleChange}
-                                            />
-                                        </div>
-
-                                        <div className="mb-3">
-                                            <strong>B.</strong>{" "}
-                                            In case the person was earlier not a member of EPF Scheme,
-                                            1952 and EPS, 1995:
-                                            <ul className="mt-2 mb-2">
-                                                <li>
-                                                    <strong>(Post Allotment of UAN)</strong> The UAN
-                                                    allotted for the member is
-                                                    <Form.Control
-                                                        name="employerUan"
-                                                        type="text"
-                                                        className="d-inline-block mx-2"
-                                                        style={{ width: "220px" }}
-                                                        value={formik.values.employerUan}
-                                                        onChange={formik.handleChange}
-                                                    />
-                                                </li>
-                                                <li className="mt-2">
-                                                    <strong>Please tick the appropriate option:</strong>
-                                                </li>
-                                            </ul>
-
-                                            <div className="ms-4">
-                                                <Form.Check
-                                                    name="employerKycPending"
-                                                    type="checkbox"
-                                                    label={
-                                                        <span
-                                                            style={{
-                                                                marginLeft: "6px",
-                                                            }}
-                                                        >
-                                                            The KYC details of the above member in the UAN database have not been uploaded
-                                                        </span>}
-                                                    className="mb-2 d-block customCheckbox"
-                                                    checked={formik.values.employerKycPending}
-                                                    onChange={handleExclusiveCheckboxChange("employerKycPending", [
-                                                        "employerKycPending",
-                                                        "employerKycUploadedNotApproved",
-                                                        "employerKycApproved",
-                                                    ])}
-                                                />
-
-                                                <Form.Check
-                                                    name="employerKycUploadedNotApproved"
-                                                    type="checkbox"
-                                                    label={
-                                                        <span
-                                                            style={{
-                                                                marginLeft: "6px",
-                                                            }}
-                                                        >
-                                                            Have been uploaded but not approved
-                                                        </span>}
-
-                                                    className="mb-2 customCheckbox"
-                                                    checked={formik.values.employerKycUploadedNotApproved}
-                                                    onChange={handleExclusiveCheckboxChange("employerKycUploadedNotApproved", [
-                                                        "employerKycPending",
-                                                        "employerKycUploadedNotApproved",
-                                                        "employerKycApproved",
-                                                    ])}
-                                                />
-
-                                                <Form.Check
-                                                    name="employerKycApproved"
-                                                    type="checkbox"
-                                                    label={
-                                                        <span
-                                                            style={{
-                                                                marginLeft: "6px",
-                                                            }}
-                                                        >
-                                                            Have been uploaded and approved with DSC
-                                                        </span>}
-                                                    className="mb-2 customCheckbox"
-                                                    checked={formik.values.employerKycApproved}
-                                                    onChange={handleExclusiveCheckboxChange("employerKycApproved", [
-                                                        "employerKycPending",
-                                                        "employerKycUploadedNotApproved",
-                                                        "employerKycApproved",
-                                                    ])}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="mb-3">
-                                            <strong>C.</strong>{" "}
-                                            In case the person was earlier a member of EPF
-                                            Scheme, 1952 and EPS, 1995:
-                                            <ul className="mt-2 mb-2">
-                                                <li>
-                                                    The above member ID of the member as mentioned
-                                                    in (A) above has been tagged with his/her
-                                                    UAN/Previous Member ID as declared by member.
-                                                </li>
-
-                                                <li className="mt-2">
-                                                    <strong>Please tick the appropriate option:</strong>
-                                                </li>
-                                            </ul>
-
-                                            <div className="ms-4">
-                                                <Form.Check
-                                                    name="employerTransferApproved"
-                                                    type="checkbox"
-                                                    label={
-                                                        <span
-                                                            style={{
-                                                                marginLeft: "6px",
-                                                            }}
-                                                        >
-                                                            The KYC details of the above member in the UAN database have been approved with Digital Signature Certificate and transfer request has been generated on portal.
-                                                        </span>}
-                                                    className="mb-2 d-block customCheckbox"
-                                                    checked={formik.values.employerTransferApproved}
-                                                    onChange={handleExclusiveCheckboxChange("employerTransferApproved", [
-                                                        "employerTransferApproved",
-                                                        "employerPhysicalClaim",
-                                                    ])}
-                                                />
-
-                                                <Form.Check
-                                                    name="employerPhysicalClaim"
-                                                    type="checkbox"
-                                                    label={
-                                                        <span
-                                                            style={{
-                                                                marginLeft: "6px",
-                                                            }}
-                                                        >
-                                                            As the DSC of establishment are not registered with EPFO, the member has been informed to file physical claim (Form-13) for transfer of funds from his previous establishment.
-                                                        </span>}
-                                                    className="mb-2 customCheckbox"
-                                                    checked={formik.values.employerPhysicalClaim}
-                                                    onChange={handleExclusiveCheckboxChange("employerPhysicalClaim", [
-                                                        "employerTransferApproved",
-                                                        "employerPhysicalClaim",
-                                                    ])}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <Row className="mt-5 align-items-end">
-                                            <Col md={6}>
-                                                <strong>DATE:</strong>
-                                                <div className="mt-2" style={{ maxWidth: "260px" }}>
+                                                has joined on
+                                                <span className="d-inline-block mx-2" style={{ width: "220px" }}>
                                                     <DatePickerInput
-                                                        name="employerDate"
-                                                        value={formik.values.employerDate}
-                                                        onValueChange={createDateValueChangeHandler(formik.setFieldValue, "employerDate")}
+                                                        name="employerJoinDate"
+                                                        value={formik.values.employerJoinDate}
+                                                        onValueChange={createDateValueChangeHandler(formik.setFieldValue, "employerJoinDate")}
+                                                    />
+                                                </span>
+                                                and has been allotted PF Member ID
+                                                <Form.Control
+                                                    name="employerPfMemberId"
+                                                    type="text"
+                                                    className="d-inline-block mx-2 mt-2"
+                                                    style={{ width: "220px" }}
+                                                    value={formik.values.employerPfMemberId}
+                                                    onChange={formik.handleChange}
+                                                />
+                                            </div>
+
+                                            <div className="mb-3">
+                                                <strong>B.</strong>{" "}
+                                                In case the person was earlier not a member of EPF Scheme,
+                                                1952 and EPS, 1995:
+                                                <ul className="mt-2 mb-2">
+                                                    <li>
+                                                        <strong>(Post Allotment of UAN)</strong> The UAN
+                                                        allotted for the member is
+                                                        <Form.Control
+                                                            name="employerUan"
+                                                            type="text"
+                                                            className="d-inline-block mx-2"
+                                                            style={{ width: "220px" }}
+                                                            value={formik.values.employerUan}
+                                                            onChange={formik.handleChange}
+                                                        />
+                                                    </li>
+                                                    <li className="mt-2">
+                                                        <strong>Please tick the appropriate option:</strong>
+                                                    </li>
+                                                </ul>
+
+                                                <div className="ms-4">
+                                                    <Form.Check
+                                                        name="employerKycPending"
+                                                        type="checkbox"
+                                                        label={
+                                                            <span
+                                                                style={{
+                                                                    marginLeft: "6px",
+                                                                }}
+                                                            >
+                                                                The KYC details of the above member in the UAN database have not been uploaded
+                                                            </span>}
+                                                        className="mb-2 d-block customCheckbox"
+                                                        checked={formik.values.employerKycPending}
+                                                        onChange={handleExclusiveCheckboxChange("employerKycPending", [
+                                                            "employerKycPending",
+                                                            "employerKycUploadedNotApproved",
+                                                            "employerKycApproved",
+                                                        ])}
+                                                    />
+
+                                                    <Form.Check
+                                                        name="employerKycUploadedNotApproved"
+                                                        type="checkbox"
+                                                        label={
+                                                            <span
+                                                                style={{
+                                                                    marginLeft: "6px",
+                                                                }}
+                                                            >
+                                                                Have been uploaded but not approved
+                                                            </span>}
+
+                                                        className="mb-2 customCheckbox"
+                                                        checked={formik.values.employerKycUploadedNotApproved}
+                                                        onChange={handleExclusiveCheckboxChange("employerKycUploadedNotApproved", [
+                                                            "employerKycPending",
+                                                            "employerKycUploadedNotApproved",
+                                                            "employerKycApproved",
+                                                        ])}
+                                                    />
+
+                                                    <Form.Check
+                                                        name="employerKycApproved"
+                                                        type="checkbox"
+                                                        label={
+                                                            <span
+                                                                style={{
+                                                                    marginLeft: "6px",
+                                                                }}
+                                                            >
+                                                                Have been uploaded and approved with DSC
+                                                            </span>}
+                                                        className="mb-2 customCheckbox"
+                                                        checked={formik.values.employerKycApproved}
+                                                        onChange={handleExclusiveCheckboxChange("employerKycApproved", [
+                                                            "employerKycPending",
+                                                            "employerKycUploadedNotApproved",
+                                                            "employerKycApproved",
+                                                        ])}
                                                     />
                                                 </div>
-                                            </Col>
+                                            </div>
 
-                                            <Col md={6} className="text-center">
-                                                <div
-                                                    style={{
-                                                        fontFamily: "cursive",
-                                                        fontSize: "34px",
-                                                        transform: "rotate(-4deg)",
-                                                        color: "#111"
-                                                    }}
-                                                >
-                                                    B. N. N Murthy
-                                                </div>
+                                            <div className="mb-3">
+                                                <strong>C.</strong>{" "}
+                                                In case the person was earlier a member of EPF
+                                                Scheme, 1952 and EPS, 1995:
+                                                <ul className="mt-2 mb-2">
+                                                    <li>
+                                                        The above member ID of the member as mentioned
+                                                        in (A) above has been tagged with his/her
+                                                        UAN/Previous Member ID as declared by member.
+                                                    </li>
 
-                                                <div className="fw-bold mt-2 text-uppercase">
-                                                    Signature of Employer with Seal of
-                                                    Establishment
+                                                    <li className="mt-2">
+                                                        <strong>Please tick the appropriate option:</strong>
+                                                    </li>
+                                                </ul>
+
+                                                <div className="ms-4">
+                                                    <Form.Check
+                                                        name="employerTransferApproved"
+                                                        type="checkbox"
+                                                        label={
+                                                            <span
+                                                                style={{
+                                                                    marginLeft: "6px",
+                                                                }}
+                                                            >
+                                                                The KYC details of the above member in the UAN database have been approved with Digital Signature Certificate and transfer request has been generated on portal.
+                                                            </span>}
+                                                        className="mb-2 d-block customCheckbox"
+                                                        checked={formik.values.employerTransferApproved}
+                                                        onChange={handleExclusiveCheckboxChange("employerTransferApproved", [
+                                                            "employerTransferApproved",
+                                                            "employerPhysicalClaim",
+                                                        ])}
+                                                    />
+
+                                                    <Form.Check
+                                                        name="employerPhysicalClaim"
+                                                        type="checkbox"
+                                                        label={
+                                                            <span
+                                                                style={{
+                                                                    marginLeft: "6px",
+                                                                }}
+                                                            >
+                                                                As the DSC of establishment are not registered with EPFO, the member has been informed to file physical claim (Form-13) for transfer of funds from his previous establishment.
+                                                            </span>}
+                                                        className="mb-2 customCheckbox"
+                                                        checked={formik.values.employerPhysicalClaim}
+                                                        onChange={handleExclusiveCheckboxChange("employerPhysicalClaim", [
+                                                            "employerTransferApproved",
+                                                            "employerPhysicalClaim",
+                                                        ])}
+                                                    />
                                                 </div>
-                                            </Col>
-                                        </Row>
-                                    </Card.Body>
-                                </Card>
+                                            </div>
+
+                                            <Row className="mt-5 align-items-end">
+                                                <Col md={6}>
+                                                    <strong>DATE:</strong>
+                                                    <div className="mt-2" style={{ maxWidth: "260px" }}>
+                                                        <DatePickerInput
+                                                            name="employerDate"
+                                                            value={formik.values.employerDate}
+                                                            onValueChange={createDateValueChangeHandler(formik.setFieldValue, "employerDate")}
+                                                        />
+                                                    </div>
+                                                </Col>
+
+                                                <Col md={6} className="text-center">
+                                                    <div
+                                                        style={{
+                                                            fontFamily: "cursive",
+                                                            fontSize: "34px",
+                                                            transform: "rotate(-4deg)",
+                                                            color: "#111"
+                                                        }}
+                                                    >
+                                                        B. N. N Murthy
+                                                    </div>
+
+                                                    <div className="fw-bold mt-2 text-uppercase">
+                                                        Signature of Employer with Seal of
+                                                        Establishment
+                                                    </div>
+                                                </Col>
+                                            </Row>
+                                        </Card.Body>
+                                    </Card>
+                                )}
                             </Card.Body>
                         </Card>
+
+                        {isSubmitted && (
+                            <Alert variant="success" className="mt-4 mb-0">
+                                All sections have been completed successfully.
+                            </Alert>
+                        )}
+
                         <div className="text-end mt-4">
                             <Button
                                 type="button"
@@ -1207,29 +1229,25 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
                             <Button
                                 type="submit"
                                 style={{ background: "#f18200", border: "none" }}
+                                disabled={formik.isSubmitting || !!isSubmitted}
                             >
-                                Submit
+                                {formik.isSubmitting ? "Submitting..." : "Submit"}
                             </Button>
-                            <Button
-                                type="button"
-                                className="border-0 ms-2"
-                                style={{ backgroundColor: "#f18200" }}
-                                onClick={downloadPDF}
-                            >
-                                Download PDF
-                            </Button>
+                            {employeePFData?.EmailID !== 'hr@natit.in' && (
+                                <Button
+                                    type="button"
+                                    className="border-0 ms-2"
+                                    style={{ backgroundColor: "#f18200" }}
+                                    onClick={downloadPDF}
+                                >
+                                    Download PDF
+                                </Button>
+                            )}
                         </div>
                     </Form>
                 </Card.Body>
             </Card>
 
-            <Modal show={showSuccess} onHide={() => setShowSuccess(false)} centered>
-                <Modal.Body className="text-center p-5">
-                    <h3>Thank You!</h3>
-                    <p>Your details have been successfully submitted.</p>
-                    <Button onClick={() => setShowSuccess(false)}>Close</Button>
-                </Modal.Body>
-            </Modal>
         </Container>
     );
 }

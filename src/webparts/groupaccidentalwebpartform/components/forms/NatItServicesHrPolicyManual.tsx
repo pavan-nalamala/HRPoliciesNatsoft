@@ -16,11 +16,13 @@ import { getSP } from '../../../../pnpjsConfig';
 const NatItServicesHrPolicyManual = ({
     onComplete,
     context,
-    employeePFData
+    employeePFData,
+    isSubmitted
 }: ISequentialFormProps & { employeePFData: any }): JSX.Element => {
 
     const [agreed, setAgreed] = useState(false);
     const [loading, setLoading] = useState(false);
+    const isAcknowledged = agreed || !!isSubmitted;
 
     const sp = React.useMemo(() => getSP(context), [context]);
 
@@ -120,18 +122,19 @@ const NatItServicesHrPolicyManual = ({
                         <Form.Check
                             type="checkbox"
                             label="I have read and agree to the HR Policy Manual"
-                            checked={agreed}
+                            checked={isAcknowledged}
+                            disabled={!!isSubmitted}
                             onChange={(e) => setAgreed(e.target.checked)}
                         />
                     </Col>
 
                     <Col md={4} className="text-end">
                         <Button
-                            disabled={!agreed || loading}
+                            disabled={!isAcknowledged || loading || !!isSubmitted}
                             onClick={submitAcknowledgement}
                             style={{ backgroundColor: '#f18200', border: 'none' }}
                         >
-                            {loading ? "Submitting..." : "Continue"}
+                            {isSubmitted ? "Completed" : loading ? "Submitting..." : "Continue"}
                         </Button>
                     </Col>
                 </Row>

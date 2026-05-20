@@ -5,3 +5,4 @@ export { default as InsuranceNominationForm } from './InsuranceNominationForm';
 export { default as PFDeclaration } from './PFDeclaration';
 export { default as NatItServicesHrPolicyManual } from './NatItServicesHrPolicyManual';
 export { default as NatItServicesHandbook } from './NatItServicesHandbook';
+export { default as ThankYouMessage } from './ThankYouMessage';

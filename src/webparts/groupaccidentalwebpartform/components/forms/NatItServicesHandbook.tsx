@@ -10,9 +10,10 @@ import {
   Alert
 } from 'react-bootstrap';
 import type { ISequentialFormProps } from './ISequentialFormProps';
-const NatItServicesHandbook = ({ onComplete, employeePFData }: ISequentialFormProps & { employeePFData: any }): JSX.Element => {
+const NatItServicesHandbook = ({ onComplete, employeePFData, isSubmitted }: ISequentialFormProps & { employeePFData: any }): JSX.Element => {
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
+  const isAcknowledged = agreed || !!isSubmitted;
   const HANDBOOK_FOLDER_URL =
     "https://natitin.sharepoint.com/sites/NatIt_HRRecruitment/Shared%20Documents/JoiningFormalitiesDocuments/NAT%20IT%20SERVICES_Hand%20book.pdf";
   React.useEffect(() => {
@@ -114,21 +115,22 @@ const NatItServicesHandbook = ({ onComplete, employeePFData }: ISequentialFormPr
             <Form.Check
               type="checkbox"
               label="I have read and understood the Employee Handbook."
-              checked={agreed}
+              checked={isAcknowledged}
+              disabled={!!isSubmitted}
               onChange={(e) => setAgreed(e.target.checked)}
             />
           </Col>
           <Col md={4} className="text-end">
             <Button
-              disabled={!agreed || loading}
+              disabled={!isAcknowledged || loading || !!isSubmitted}
               onClick={submitAcknowledgement}
               style={{
-                backgroundColor: agreed ? '#f18200' : '#adb5bd',
+                backgroundColor: isAcknowledged ? '#f18200' : '#adb5bd',
                 border: 'none',
                 minWidth: '180px'
               }}
             >
-              {loading ? "Submitting..." : "Continue"}
+              {isSubmitted ? "Completed" : loading ? "Submitting..." : "Continue"}
             </Button>
           </Col>
         </Row>

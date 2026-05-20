@@ -6,6 +6,7 @@ import * as Yup from 'yup';
 import type { ISequentialFormProps } from './ISequentialFormProps';
 import {
   createDateValueChangeHandler,
+  createMatchingDateValidation,
   createDateValidation,
   DatePickerInput
 } from './dateFieldUtils';
@@ -14,6 +15,12 @@ import moment from 'moment';
 import { getSP } from '../../../../pnpjsConfig';
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import {
+  candidateFieldNames,
+  getCandidateDateValue,
+  getCandidateValue,
+  setFieldIfEmpty
+} from './candidateAutoFillUtils';
 
 type NomineeRow = {
   nomineeNameAndAddress: string;
@@ -52,6 +59,7 @@ const TeamLifeInsuranceNomination = ({
   onEmployeeSignatureChange,
   context,
   employeePFData,
+  sharedDateOfBirth,
 }: ISequentialFormProps): JSX.Element => {
 
   const formRef = React.useRef<HTMLDivElement>(null);
@@ -74,10 +82,20 @@ const TeamLifeInsuranceNomination = ({
     }
   }, []);
 
+  const commonDateOfBirth =
+    sharedDateOfBirth || getCandidateDateValue(employeePFData, candidateFieldNames.dateOfBirth);
+  const commonDateOfBirthMessage = commonDateOfBirth
+    ? `Date of Birth must match the employee Date of Birth (${commonDateOfBirth})`
+    : 'Date of Birth must match the employee Date of Birth';
+
   const validationSchema = Yup.object().shape({
     employeeName: Yup.string().required('Name of the Employee is required'),
     fatherOrHusbandName: Yup.string().required("Father's / Husband's Name is required"),
-    dateOfBirth: createDateValidation('Date of Birth is required', 'Date of Birth must be in DD/MM/YYYY format')
+    dateOfBirth: createMatchingDateValidation(
+      createDateValidation('Date of Birth is required', 'Date of Birth must be in DD/MM/YYYY format'),
+      commonDateOfBirth,
+      commonDateOfBirthMessage
+    )
       .test(
         'dob-age-validation',
         'Minimum age must be 18 years',
@@ -223,6 +241,32 @@ const TeamLifeInsuranceNomination = ({
       }
     }
   });
+
+  React.useEffect(() => {
+    const autoFill = async (): Promise<void> => {
+      const employeeName = getCandidateValue(employeePFData, candidateFieldNames.employeeName);
+
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'employeeName', employeeName);
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'declarationEmployeeName', employeeName);
+      await setFieldIfEmpty(
+        formik.values,
+        formik.setFieldValue,
+        'fatherOrHusbandName',
+        getCandidateValue(employeePFData, candidateFieldNames.fatherOrHusbandName)
+      );
+      await setFieldIfEmpty(
+        formik.values,
+        formik.setFieldValue,
+        'dateOfBirth',
+        getCandidateDateValue(employeePFData, candidateFieldNames.dateOfBirth)
+      );
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'sex', getCandidateValue(employeePFData, candidateFieldNames.gender));
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'employeeId', getCandidateValue(employeePFData, candidateFieldNames.employeeId));
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'address', getCandidateValue(employeePFData, candidateFieldNames.address));
+    };
+
+    void autoFill();
+  }, [employeePFData]);
 
   React.useEffect(() => {
     if (sharedEmployeeSignature && formik.values.signature !== sharedEmployeeSignature) {
@@ -416,18 +460,20 @@ const TeamLifeInsuranceNomination = ({
                   )}
                 </Col>
 
-                <Col md={4}>
-                  <Form.Label>5. EMP ID</Form.Label>
-                  <Form.Control
-                    name="employeeId"
-                    type="text"
-                    placeholder="Enter ID"
-                    value={formik.values.employeeId}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    disabled={employeePFData?.emailID !== 'hr@natit.in'}
-                  />
-                </Col>
+                {employeePFData?.EmailID === 'hr@natit.in' && (
+                  <Col md={4}>
+                    <Form.Label>5. EMP ID</Form.Label>
+                    <Form.Control
+                      name="employeeId"
+                      type="text"
+                      placeholder="Enter ID"
+                      value={formik.values.employeeId}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+                      disabled={employeePFData?.EmailID !== 'hr@natit.in'}
+                    />
+                  </Col>
+                )}
               </Row>
 
               <Form.Group className="mb-4">
@@ -813,17 +859,20 @@ const TeamLifeInsuranceNomination = ({
                   type="submit"
                   className="border-0"
                   style={{ backgroundColor: '#f18200' }}
+                  disabled={formik.isSubmitting}
                 >
-                  Submit Form
+                  {formik.isSubmitting ? 'Submitting...' : 'Submit Form'}
                 </Button>
-                <Button
-                  type="button"
-                  className="border-0 ms-2"
-                  style={{ backgroundColor: "#f18200" }}
-                  onClick={downloadPDF}
-                >
-                  Download PDF
-                </Button>
+                {employeePFData?.EmailID === 'hr@natit.in' && (
+                  <Button
+                    type="button"
+                    className="border-0 ms-2"
+                    style={{ backgroundColor: "#f18200" }}
+                    onClick={downloadPDF}
+                  >
+                    Download PDF
+                  </Button>
+                )}
 
               </div>
             </Form>

@@ -143,3 +143,24 @@ export const createDateValidation = (requiredMessage: string, invalidMessage: st
       return moment(value, DATE_INPUT_FORMAT, true).isValid();
     });
 };
+
+export const createMatchingDateValidation = (
+  schema: Yup.StringSchema<string>,
+  expectedDate: string,
+  message: string
+): Yup.StringSchema<string> => {
+  return schema.test('matching-date', message, (value) => {
+    if (!value || !expectedDate) {
+      return true;
+    }
+
+    const parsedValue = moment(value, DATE_INPUT_FORMAT, true);
+    const parsedExpectedDate = moment(expectedDate, DATE_INPUT_FORMAT, true);
+
+    if (!parsedValue.isValid() || !parsedExpectedDate.isValid()) {
+      return true;
+    }
+
+    return parsedValue.isSame(parsedExpectedDate, 'day');
+  });
+};

@@ -7,6 +7,8 @@ export interface ISequentialFormProps {
   // Signature sharing
   sharedEmployeeSignature?: string;
   onEmployeeSignatureChange?: (value: string) => void;
+  sharedDateOfBirth?: string;
+  onSharedDateOfBirthChange?: (value: string) => void;
 
   // SharePoint context
   spHttpClient?: SPHttpClient;
@@ -14,5 +16,6 @@ export interface ISequentialFormProps {
   context?: WebPartContext;
   currentUser?: any; 
   employeePFData:any;
+  isSubmitted?: boolean;
 
 }

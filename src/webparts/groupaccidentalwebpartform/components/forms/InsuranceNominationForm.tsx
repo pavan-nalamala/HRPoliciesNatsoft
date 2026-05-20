@@ -6,6 +6,7 @@ import * as Yup from 'yup';
 import type { ISequentialFormProps } from './ISequentialFormProps';
 import {
   createDateValueChangeHandler,
+  createMatchingDateValidation,
   createDateValidation,
   DatePickerInput
 } from './dateFieldUtils';
@@ -14,6 +15,12 @@ import moment from 'moment';
 import { getSP } from '../../../../pnpjsConfig';
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import {
+  candidateFieldNames,
+  getCandidateDateValue,
+  getCandidateValue,
+  setFieldIfEmpty
+} from './candidateAutoFillUtils';
 
 type NomineeRow = {
   nomineeNameAndAddress: string;
@@ -48,7 +55,8 @@ const InsuranceNominationForm = ({
   sharedEmployeeSignature,
   onEmployeeSignatureChange,
   context,
-  employeePFData
+  employeePFData,
+  sharedDateOfBirth
 }: ISequentialFormProps): JSX.Element => {
   const formRef = React.useRef<HTMLDivElement>(null);
 
@@ -62,10 +70,20 @@ const InsuranceNominationForm = ({
       document.head.appendChild(link);
     }
   }, []);
+  const commonDateOfBirth =
+    sharedDateOfBirth || getCandidateDateValue(employeePFData, candidateFieldNames.dateOfBirth);
+  const commonDateOfBirthMessage = commonDateOfBirth
+    ? `Date of Birth must match the employee Date of Birth (${commonDateOfBirth})`
+    : 'Date of Birth must match the employee Date of Birth';
+
   const validationSchema = Yup.object().shape({
     employeeName: Yup.string().required('Name of the Employee is required'),
     fatherOrHusbandName: Yup.string().required("Father's / Husband's Name is required"),
-    dateOfBirth: createDateValidation('Date of Birth is required', 'Date of Birth must be in DD/MM/YYYY format')
+    dateOfBirth: createMatchingDateValidation(
+      createDateValidation('Date of Birth is required', 'Date of Birth must be in DD/MM/YYYY format'),
+      commonDateOfBirth,
+      commonDateOfBirthMessage
+    )
       .test(
         'dob-age-validation',
         'Minimum age must be 18 years',
@@ -153,12 +171,20 @@ const InsuranceNominationForm = ({
             Title: values.employeeName,
             EmployeeName: values.employeeName,
             FatherName: values.fatherOrHusbandName,
-            DOB: moment(values.dateOfBirth, 'DD/MM/YYYY').toISOString(),
+            DOB: moment(
+              values.dateOfBirth,
+              'DD/MM/YYYY',
+              true
+            ).isValid()
+              ? moment(values.dateOfBirth, 'DD/MM/YYYY').format('YYYY-MM-DD')
+              : null,
+            // DOB: moment(values.dateOfBirth, 'DD/MM/YYYY').toISOString(),
             Gender: values.sex,
             EmployeeID: Number(values.employeeId || null),
             Address: values.address,
             DeclarationDate: moment(values.declarationDate, 'DD/MM/YYYY').toISOString(),
-            Place: values.place
+            Place: values.place,
+            can_id: String(employeePFData?.ID),
           });
         const parentId = response?.data?.Id;
         const itemId = response.data.Id;
@@ -183,7 +209,13 @@ const InsuranceNominationForm = ({
               ParentID: parentId,
               NomineeName: nominee.nomineeNameAndAddress,
               Relationship: nominee.relationship,
-              DOB: moment(nominee.dateOfBirth, 'DD/MM/YYYY').toISOString(),
+              DOB: moment(
+                nominee.dateOfBirth,
+                'DD/MM/YYYY',
+                true
+              ).isValid()
+                ? moment(nominee.dateOfBirth, 'DD/MM/YYYY').format('YYYY-MM-DD')
+                : null,
               ShareAmount: Number(nominee.shareAmount),
               GuardianDetails: nominee.guardianDetails
             });
@@ -196,6 +228,33 @@ const InsuranceNominationForm = ({
       }
     }
   });
+
+  React.useEffect(() => {
+    const autoFill = async (): Promise<void> => {
+      const employeeName = getCandidateValue(employeePFData, candidateFieldNames.employeeName);
+
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'employeeName', employeeName);
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'declarationEmployeeName', employeeName);
+      await setFieldIfEmpty(
+        formik.values,
+        formik.setFieldValue,
+        'fatherOrHusbandName',
+        getCandidateValue(employeePFData, candidateFieldNames.fatherOrHusbandName)
+      );
+      await setFieldIfEmpty(
+        formik.values,
+        formik.setFieldValue,
+        'dateOfBirth',
+        getCandidateDateValue(employeePFData, candidateFieldNames.dateOfBirth)
+      );
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'sex', getCandidateValue(employeePFData, candidateFieldNames.gender));
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'employeeId', getCandidateValue(employeePFData, candidateFieldNames.employeeId));
+      await setFieldIfEmpty(formik.values, formik.setFieldValue, 'address', getCandidateValue(employeePFData, candidateFieldNames.address));
+    };
+
+    void autoFill();
+  }, [employeePFData]);
+
   const headerStyle = {
     backgroundColor: '#f18200',
     color: '#fff',
@@ -386,18 +445,20 @@ const InsuranceNominationForm = ({
                     <p className="text-danger small mb-0">{formik.errors.sex}</p>
                   )}
                 </Col>
-                <Col md={4}>
-                  <Form.Label>5. EMP ID</Form.Label>
-                  <Form.Control
-                    name="employeeId"
-                    type="text"
-                    placeholder="Enter ID"
-                    value={formik.values.employeeId}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    disabled={employeePFData?.EmailID !== 'hr@natit.in'}
-                  />
-                </Col>
+                {employeePFData?.EmailID === 'hr@natit.in' && (
+                  <Col md={4}>
+                    <Form.Label>5. EMP ID</Form.Label>
+                    <Form.Control
+                      name="employeeId"
+                      type="text"
+                      placeholder="Enter ID"
+                      value={formik.values.employeeId}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+
+                    />
+                  </Col>
+                )}
               </Row>
               <Form.Group className="mb-4">
                 <Form.Label>6. Address</Form.Label>
@@ -744,17 +805,20 @@ const InsuranceNominationForm = ({
                   type="submit"
                   className="border-0"
                   style={{ backgroundColor: '#f18200' }}
+                  disabled={formik.isSubmitting}
                 >
-                  Submit Form
+                  {formik.isSubmitting ? 'Submitting...' : 'Submit Form'}
                 </Button>
-                <Button
-                  type="button"
-                  className="border-0 ms-2"
-                  style={{ backgroundColor: "#f18200" }}
-                  onClick={downloadPDF}
-                >
-                  Download PDF
-                </Button>
+                {employeePFData?.EmailID === 'hr@natit.in' && (
+                  <Button
+                    type="button"
+                    className="border-0 ms-2"
+                    style={{ backgroundColor: "#f18200" }}
+                    onClick={downloadPDF}
+                  >
+                    Download PDF
+                  </Button>
+                )}
               </div>
             </Form>
           </Card.Body>

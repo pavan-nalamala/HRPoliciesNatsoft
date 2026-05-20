@@ -192,3 +192,10 @@ button[aria-label^="Open calendar for"]::after {
     page-break-inside: avoid;
   }
 }
+
+
+input:checked {
+    background-color: #f18200 !important;
+}
+
+  
