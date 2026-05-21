@@ -273,60 +273,189 @@ const JoiningFormalities = ({
             signatureName: "",
         },
         validationSchema: joiningValidationSchema,
-        onSubmit: async (values) => {
-            try {
-                const sp = getSP(context);
-                if (!values.fullName) return;
-                const empResponse = await sp.web.lists
-                    .getByTitle("JoiningFormalities")
-                    .items.add({
-                        Title: values.fullName,
-                        hr_employee_ID: values.employeeId,
-                        hr_designation: values.designation,
-                        hr_department: values.department,
-                        employee_full_name: values.fullName,
-                        employee_DOB: moment(values.dob, 'DD/MM/YYYY').toISOString(),
-                        employee_actual_DOB: moment(values.actualDob, 'DD/MM/YYYY').toISOString(),
-                        employee_reporting_to: values.reportingTo,
-                        bank_name_as_per_bank_records: values.bankName,
-                        bank_account_no: values.accountNo,
-                        bank_IFSC_code: values.ifscCode,
-                        bank_branch: values.branchDetails,
-                        can_id: String(employeePFData?.ID),
-                    });
-                const employeeSPID = empResponse?.data?.Id;
-                if (Array.isArray(values.education)) {
-                    for (const edu of values.education) {
-                        if (!edu.qualification) continue;
-                        await sp.web.lists.getByTitle("EmployeeEducation").items.add({
-                            Title: values.fullName,
-                            EmployeeID: String(employeeSPID),
-                            Qualification: edu.qualification,
-                            Institute: edu.institute,
-                            Specialization: edu.specialization,
-                            YearCompleted: edu.year
-                                ? moment(edu.year, 'YYYY').toISOString()
-                                : null
-                        });
-                    }
-                }
+        // onSubmit: async (values) => {
+        //     try {
+        //         const sp = getSP(context);
+        //         if (!values.fullName) return;
+        //         const empResponse = await sp.web.lists
+        //             .getByTitle("JoiningFormalities")
+        //             .items.add({
+        //                 Title: values.fullName,
+        //                 hr_employee_ID: values.employeeId,
+        //                 hr_designation: values.designation,
+        //                 hr_department: values.department,
+        //                 employee_full_name: values.fullName,
+        //                 employee_DOB: moment(values.dob, 'DD/MM/YYYY').toISOString(),
+        //                 employee_actual_DOB: moment(values.actualDob, 'DD/MM/YYYY').toISOString(),
+        //                 employee_reporting_to: values.reportingTo,
+        //                 bank_name_as_per_bank_records: values.bankName,
+        //                 bank_account_no: values.accountNo,
+        //                 bank_IFSC_code: values.ifscCode,
+        //                 bank_branch: values.branchDetails,
+        //                 can_id: String(employeePFData?.ID),
+        //             });
+        //         const employeeSPID = empResponse?.data?.Id;
+        //         if (Array.isArray(values.education)) {
+        //             for (const edu of values.education) {
+        //                 if (!edu.qualification) continue;
+        //                 await sp.web.lists.getByTitle("EmployeeEducation").items.add({
+        //                     Title: values.fullName,
+        //                     EmployeeID: String(employeeSPID),
+        //                     Qualification: edu.qualification,
+        //                     Institute: edu.institute,
+        //                     Specialization: edu.specialization,
+        //                     YearCompleted: edu.year
+        //                         ? moment(edu.year, 'YYYY').toISOString()
+        //                         : null
+        //                 });
+        //             }
+        //         }
 
-                if (Array.isArray(values.references)) {
-                    for (const ref of values.references) {
-                        if (!ref.name) continue;
-                        await sp.web.lists.getByTitle("EmployeeReferences").items.add({
-                            Title: values.fullName,
-                            EmployeeID: String(employeeSPID),
-                            Name: ref.name,
-                            Occupation: ref.occupation,
-                            Relationship: ref.relationship,
-                            Contact: ref.contact
-                        });
-                    }
-                }
-                onComplete?.();
+        //         if (Array.isArray(values.references)) {
+        //             for (const ref of values.references) {
+        //                 if (!ref.name) continue;
+        //                 await sp.web.lists.getByTitle("EmployeeReferences").items.add({
+        //                     Title: values.fullName,
+        //                     EmployeeID: String(employeeSPID),
+        //                     Name: ref.name,
+        //                     Occupation: ref.occupation,
+        //                     Relationship: ref.relationship,
+        //                     Contact: ref.contact
+        //                 });
+        //             }
+        //         }
+        //         onComplete?.();
+        //     } catch (error) {
+        //         console.error("Submit Error:", error);
+        //         alert("Submission failed");
+        //     }
+        // }
+        onSubmit: async (values) => {
+
+            try {
+
+                // SAME STRUCTURE
+                // ONLY REMOVED API CALLS
+
+                if (!values.fullName) return;
+
+                const payload = {
+
+                    mainItem: {
+
+                        Title: values.fullName,
+
+                        hr_employee_ID:
+                            values.employeeId,
+
+                        hr_designation:
+                            values.designation,
+
+                        hr_department:
+                            values.department,
+
+                        employee_full_name:
+                            values.fullName,
+
+                        employee_DOB:
+                            moment(
+                                values.dob,
+                                'DD/MM/YYYY'
+                            ).toISOString(),
+
+                        employee_actual_DOB:
+                            moment(
+                                values.actualDob,
+                                'DD/MM/YYYY'
+                            ).toISOString(),
+
+                        employee_reporting_to:
+                            values.reportingTo,
+
+                        bank_name_as_per_bank_records:
+                            values.bankName,
+
+                        bank_account_no:
+                            values.accountNo,
+
+                        bank_IFSC_code:
+                            values.ifscCode,
+
+                        bank_branch:
+                            values.branchDetails,
+
+                        can_id:
+                            String(employeePFData?.ID),
+                    },
+
+                    education:
+                        Array.isArray(values.education)
+                            ? values.education
+                                .filter(
+                                    (edu: any) =>
+                                        edu.qualification
+                                )
+                                .map((edu: any) => ({
+
+                                    Title:
+                                        values.fullName,
+
+                                    Qualification:
+                                        edu.qualification,
+
+                                    Institute:
+                                        edu.institute,
+
+                                    Specialization:
+                                        edu.specialization,
+
+                                    YearCompleted:
+                                        edu.year
+                                            ? moment(
+                                                edu.year,
+                                                'YYYY'
+                                            ).toISOString()
+                                            : null
+                                }))
+                            : [],
+
+                    references:
+                        Array.isArray(values.references)
+                            ? values.references
+                                .filter(
+                                    (ref: any) =>
+                                        ref.name
+                                )
+                                .map((ref: any) => ({
+
+                                    Title:
+                                        values.fullName,
+
+                                    Name:
+                                        ref.name,
+
+                                    Occupation:
+                                        ref.occupation,
+
+                                    Relationship:
+                                        ref.relationship,
+
+                                    Contact:
+                                        ref.contact
+                                }))
+                            : []
+                };
+
+                // PASS FULL PAYLOAD
+                onComplete?.(payload);
+
             } catch (error) {
-                console.error("Submit Error:", error);
+
+                console.error(
+                    "Submit Error:",
+                    error
+                );
+
                 alert("Submission failed");
             }
         }
@@ -595,14 +724,14 @@ const JoiningFormalities = ({
                                     </div>
                                 </div>
                                 {/* Employee Details */}
-                                {employeePFData?.EmailID === 'hr@natit.in' && (
+                                {employeePFData?.EmailID === 'hr@natit.in' || employeePFData?.EmailID === 'testgauge@natit.in' && (
                                     <div>
                                         <h5
                                             className="text-white p-2 rounded"
                                             style={{ backgroundColor: "#f18200" }}
                                         >
-                                            Employee Details Testing the app
-                                         </h5>
+                                            Employee Details
+                                        </h5>
                                         <Row className="mb-3">
                                             <Col md={6}>
                                                 <Form.Label>Employee ID</Form.Label>
@@ -611,7 +740,7 @@ const JoiningFormalities = ({
                                                     value={joiningFormValidation.values.employeeId}
                                                     onChange={joiningFormValidation.handleChange}
                                                     onBlur={joiningFormValidation.handleBlur}
-                                                    
+
                                                 />
                                                 {joiningFormValidation.touched.employeeId &&
                                                     joiningFormValidation.errors.employeeId && (
@@ -622,13 +751,13 @@ const JoiningFormalities = ({
                                             </Col>
                                             <Col md={6}>
                                                 <Form.Label>Designation</Form.Label>
-                                                
+
                                                 <Form.Select
                                                     name="designation"
                                                     value={joiningFormValidation.values.designation}
                                                     onChange={joiningFormValidation.handleChange}
                                                     onBlur={joiningFormValidation.handleBlur}
-                                                    
+
                                                 >
                                                     <option value="">Select Designation</option>
                                                     {getDesignations?.map((desig) => (
@@ -653,7 +782,7 @@ const JoiningFormalities = ({
                                                     value={joiningFormValidation.values.reportingTo}
                                                     onChange={joiningFormValidation.handleChange}
                                                     onBlur={joiningFormValidation.handleBlur}
-                                                    
+
                                                 />
                                                 {joiningFormValidation.touched.reportingTo &&
                                                     joiningFormValidation.errors.reportingTo && (
@@ -670,7 +799,7 @@ const JoiningFormalities = ({
                                                     value={joiningFormValidation.values.department}
                                                     onChange={joiningFormValidation.handleChange}
                                                     onBlur={joiningFormValidation.handleBlur}
-                                                    
+
                                                 >
                                                     <option value="">Select Department</option>
                                                     {getDepartments?.map((dept) => (
@@ -695,7 +824,7 @@ const JoiningFormalities = ({
                                     className="text-white p-2 rounded"
                                     style={{ backgroundColor: "#f18200" }}
                                 >
-                                    Personal Information testing 
+                                    Personal Information 
                                 </h5>
                                 <Row className="mb-3">
                                     <Col md={6}>
@@ -1130,15 +1259,15 @@ const JoiningFormalities = ({
                                     >
                                         Submit Form
                                     </Button>
-                                    {employeePFData?.EmailID === 'hr@natit.in' && (
-                                    <Button
-                                        type="button"
-                                        className="border-0 ms-2"
-                                        style={{ backgroundColor: "#f18200" }}
-                                        onClick={downloadPDF}
-                                    >
-                                        Download PDF
-                                    </Button>
+                                    {employeePFData?.EmailID === 'hr@natit.in' || employeePFData?.EmailID === 'testgauge@natit.in' && (
+                                        <Button
+                                            type="button"
+                                            className="border-0 ms-2"
+                                            style={{ backgroundColor: "#f18200" }}
+                                            onClick={downloadPDF}
+                                        >
+                                            Download PDF
+                                        </Button>
                                     )}
                                 </div>
 

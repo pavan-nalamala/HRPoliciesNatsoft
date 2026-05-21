@@ -196,140 +196,248 @@ const GratuityNominationForm = ({
       acknowledgmentEmployeeSignature: '',
     },
     validationSchema,
+    // onSubmit: async (values) => {
+    //   try {
+    //     const sp = getSP(context);
+    //     const mainItem = await sp.web.lists
+    //       .getByTitle("GratuityNomination")
+    //       .items.add({
+    //         Title: values.employeeIntroName,
+    //         EmployeeName: values.employeeIntroName,
+
+    //         SpouseExclusionDate: values.spouseExclusionDate
+    //           ? moment(values.spouseExclusionDate, "DD/MM/YYYY").toISOString()
+    //           : null,
+
+    //         EmployeeStatName: values.employeeStatementNameAndAddress,
+    //         Sex: values.sex,
+    //         Religion: values.religion,
+    //         MaritalStatus: values.maritalStatus,
+    //         Department: values.departmentBranchSection,
+
+    //         EmployeeId: Number(values.employeeId),
+    //         can_id: String(employeePFData?.ID),
+    //         DateOfJoining: values.dateOfJoining
+    //           ? moment(values.dateOfJoining, "DD/MM/YYYY").toISOString()
+    //           : null,
+
+    //         PermanentAddress: values.permanentAddress,
+    //         Place: values.place,
+
+    //         // IMPORTANT: ensure correct internal name
+    //         FormDate0: values.date
+    //           ? moment(values.date, "DD/MM/YYYY").toISOString()
+    //           : null,
+
+    //         ReferenceNo: String(values.referenceNo),
+
+    //         EmployerCertificateDate: values.employerCertificateDate
+    //           ? moment(values.employerCertificateDate, "DD/MM/YYYY").toISOString()
+    //           : null,
+
+    //         Designation: values.designation,
+
+    //         AcknowledgmentDate: values.acknowledgmentDate
+    //           ? moment(values.acknowledgmentDate, "DD/MM/YYYY").toISOString()
+    //           : null,
+    //       });
+
+    //     const itemId = mainItem.data.Id;
+
+    //     // 2. Helper: convert base64 signature → Blob (if needed)
+    //     const dataURLtoBlob = (dataurl: string) => {
+    //       const arr = dataurl.split(",");
+    //       const mime = arr[0].match(/:(.*?);/)![1];
+    //       const bstr = atob(arr[1]);
+    //       let n = bstr.length;
+    //       const u8arr = new Uint8Array(n);
+
+    //       while (n--) {
+    //         u8arr[n] = bstr.charCodeAt(n);
+    //       }
+
+    //       return new Blob([u8arr], { type: mime });
+    //     };
+
+    //     // 3. Helper: upload attachment
+    //     const uploadAttachment = async (fileName: string, file: any) => {
+    //       if (!file) return;
+
+    //       return sp.web.lists
+    //         .getByTitle("GratuityNomination")
+    //         .items.getById(itemId)
+    //         .attachmentFiles.add(fileName, file);
+    //     };
+
+    //     // 4. ATTACHMENTS (5 SIGNATURES)
+
+    //     await uploadAttachment(
+    //       "EmployeeSignature.png",
+    //       dataURLtoBlob(values.employeeSignature)
+    //     );
+
+    //     await uploadAttachment(
+    //       "Witness1Signature.png",
+    //       values.witnesses?.[0]?.signature ? dataURLtoBlob(values.witnesses[0].signature) : null);
+
+    //     await uploadAttachment(
+    //       "Witness2Signature.png",
+    //       values.witnesses?.[1]?.signature ? dataURLtoBlob(values.witnesses[1].signature) : null
+    //     );
+
+    //     await uploadAttachment(
+    //       "AuthorizedSignature.png",
+    //       dataURLtoBlob(values.authorizedSignature)
+    //     );
+
+    //     await uploadAttachment(
+    //       "acknowledgmentEmployeeSignature.png",
+    //       dataURLtoBlob(values.acknowledgmentEmployeeSignature)
+    //     );
+
+    //     // 5. SAVE NOMINEES
+    //     if (values.nominees?.length) {
+    //       for (const n of values.nominees) {
+    //         if (!n.fullNameAndAddress) continue;
+
+    //         await sp.web.lists
+    //           .getByTitle("GratuityNominees")
+    //           .items.add({
+    //             ParentID: itemId,
+    //             FullNameAndAddress: n.fullNameAndAddress,
+    //             Relationship: n.relationship,
+    //             Age: Number(n.age),
+    //             SharePercentage: Number(n.sharePercentage),
+    //           });
+    //       }
+    //     }
+
+    //     // 6. SAVE WITNESSES
+    //     if (values.witnesses?.length) {
+    //       for (const w of values.witnesses) {
+    //         if (!w.nameAndAddress) continue;
+
+    //         await sp.web.lists
+    //           .getByTitle("GratuityWitnesses")
+    //           .items.add({
+    //             ParentID: itemId,
+    //             NameAndAddress: w.nameAndAddress,
+    //           });
+    //       }
+    //     }
+
+    //     onComplete?.();
+    //   } catch (error) {
+    //     console.error("Submit Error:", error);
+    //     alert("Submission failed");
+    //   }
+    // }
     onSubmit: async (values) => {
+
       try {
-        const sp = getSP(context);
-        const mainItem = await sp.web.lists
-          .getByTitle("GratuityNomination")
-          .items.add({
-            Title: values.employeeIntroName,
-            EmployeeName: values.employeeIntroName,
 
-            SpouseExclusionDate: values.spouseExclusionDate
-              ? moment(values.spouseExclusionDate, "DD/MM/YYYY").toISOString()
+        // ONLY STORE PAYLOAD
+        // NO API CALL HERE
+
+        const payload = {
+
+          Title: values.employeeIntroName,
+
+          EmployeeName: values.employeeIntroName,
+
+          SpouseExclusionDate: values.spouseExclusionDate
+            ? moment(
+              values.spouseExclusionDate,
+              "DD/MM/YYYY"
+            ).toISOString()
+            : null,
+
+          EmployeeStatName:
+            values.employeeStatementNameAndAddress,
+
+          Sex: values.sex,
+
+          Religion: values.religion,
+
+          MaritalStatus: values.maritalStatus,
+
+          Department: values.departmentBranchSection,
+
+          EmployeeId: Number(values.employeeId),
+
+          can_id: String(employeePFData?.ID),
+
+          DateOfJoining: values.dateOfJoining
+            ? moment(
+              values.dateOfJoining,
+              "DD/MM/YYYY"
+            ).toISOString()
+            : null,
+
+          PermanentAddress: values.permanentAddress,
+
+          Place: values.place,
+
+          FormDate0: values.date
+            ? moment(
+              values.date,
+              "DD/MM/YYYY"
+            ).toISOString()
+            : null,
+
+          ReferenceNo: String(values.referenceNo),
+
+          EmployerCertificateDate:
+            values.employerCertificateDate
+              ? moment(
+                values.employerCertificateDate,
+                "DD/MM/YYYY"
+              ).toISOString()
               : null,
 
-            EmployeeStatName: values.employeeStatementNameAndAddress,
-            Sex: values.sex,
-            Religion: values.religion,
-            MaritalStatus: values.maritalStatus,
-            Department: values.departmentBranchSection,
+          Designation: values.designation,
 
-            EmployeeId: Number(values.employeeId),
-            can_id: String(employeePFData?.ID),
-            DateOfJoining: values.dateOfJoining
-              ? moment(values.dateOfJoining, "DD/MM/YYYY").toISOString()
+          AcknowledgmentDate:
+            values.acknowledgmentDate
+              ? moment(
+                values.acknowledgmentDate,
+                "DD/MM/YYYY"
+              ).toISOString()
               : null,
 
-            PermanentAddress: values.permanentAddress,
-            Place: values.place,
+          nominees:
+            values.nominees || [],
 
-            // IMPORTANT: ensure correct internal name
-            FormDate0: values.date
-              ? moment(values.date, "DD/MM/YYYY").toISOString()
-              : null,
+          witnesses:
+            values.witnesses || [],
 
-            ReferenceNo: String(values.referenceNo),
+          attachments: {
 
-            EmployerCertificateDate: values.employerCertificateDate
-              ? moment(values.employerCertificateDate, "DD/MM/YYYY").toISOString()
-              : null,
+            employeeSignature:
+              values.employeeSignature,
 
-            Designation: values.designation,
+            witness1Signature:
+              values.witnesses?.[0]?.signature || null,
 
-            AcknowledgmentDate: values.acknowledgmentDate
-              ? moment(values.acknowledgmentDate, "DD/MM/YYYY").toISOString()
-              : null,
-          });
+            witness2Signature:
+              values.witnesses?.[1]?.signature || null,
 
-        const itemId = mainItem.data.Id;
+            authorizedSignature:
+              values.authorizedSignature,
 
-        // 2. Helper: convert base64 signature → Blob (if needed)
-        const dataURLtoBlob = (dataurl: string) => {
-          const arr = dataurl.split(",");
-          const mime = arr[0].match(/:(.*?);/)![1];
-          const bstr = atob(arr[1]);
-          let n = bstr.length;
-          const u8arr = new Uint8Array(n);
-
-          while (n--) {
-            u8arr[n] = bstr.charCodeAt(n);
+            acknowledgmentEmployeeSignature:
+              values.acknowledgmentEmployeeSignature
           }
-
-          return new Blob([u8arr], { type: mime });
         };
 
-        // 3. Helper: upload attachment
-        const uploadAttachment = async (fileName: string, file: any) => {
-          if (!file) return;
+        // PASS PAYLOAD TO PARENT
+        onComplete?.(payload);
 
-          return sp.web.lists
-            .getByTitle("GratuityNomination")
-            .items.getById(itemId)
-            .attachmentFiles.add(fileName, file);
-        };
-
-        // 4. ATTACHMENTS (5 SIGNATURES)
-
-        await uploadAttachment(
-          "EmployeeSignature.png",
-          dataURLtoBlob(values.employeeSignature)
-        );
-
-        await uploadAttachment(
-          "Witness1Signature.png",
-          values.witnesses?.[0]?.signature ? dataURLtoBlob(values.witnesses[0].signature) : null);
-
-        await uploadAttachment(
-          "Witness2Signature.png",
-          values.witnesses?.[1]?.signature ? dataURLtoBlob(values.witnesses[1].signature) : null
-        );
-
-        await uploadAttachment(
-          "AuthorizedSignature.png",
-          dataURLtoBlob(values.authorizedSignature)
-        );
-
-        await uploadAttachment(
-          "acknowledgmentEmployeeSignature.png",
-          dataURLtoBlob(values.acknowledgmentEmployeeSignature)
-        );
-
-        // 5. SAVE NOMINEES
-        if (values.nominees?.length) {
-          for (const n of values.nominees) {
-            if (!n.fullNameAndAddress) continue;
-
-            await sp.web.lists
-              .getByTitle("GratuityNominees")
-              .items.add({
-                ParentID: itemId,
-                FullNameAndAddress: n.fullNameAndAddress,
-                Relationship: n.relationship,
-                Age: Number(n.age),
-                SharePercentage: Number(n.sharePercentage),
-              });
-          }
-        }
-
-        // 6. SAVE WITNESSES
-        if (values.witnesses?.length) {
-          for (const w of values.witnesses) {
-            if (!w.nameAndAddress) continue;
-
-            await sp.web.lists
-              .getByTitle("GratuityWitnesses")
-              .items.add({
-                ParentID: itemId,
-                NameAndAddress: w.nameAndAddress,
-              });
-          }
-        }
-
-        onComplete?.();
       } catch (error) {
-        console.error("Submit Error:", error);
-        alert("Submission failed");
+
+        console.error("Payload Error:", error);
+
+        alert("Something went wrong");
       }
     }
   });
@@ -858,7 +966,7 @@ const GratuityNominationForm = ({
                       </p>
                     )}
                 </Col>
-                {employeePFData?.EmailID === 'hr@natit.in' && (
+                {employeePFData?.EmailID === 'hr@natit.in' || employeePFData?.EmailID === 'testgauge@natit.in' && (
                   <Col md={3}>
                     <Form.Label>EMP ID</Form.Label>
                     <Form.Control
@@ -1129,7 +1237,7 @@ const GratuityNominationForm = ({
                 >
                   Submit Form
                 </Button>
-                {employeePFData?.EmailID === 'hr@natit.in' && (
+                {employeePFData?.EmailID === 'hr@natit.in' || employeePFData?.EmailID === 'testgauge@natit.in' && (
                   <Button
                     type="button"
                     className="border-0 ms-2"

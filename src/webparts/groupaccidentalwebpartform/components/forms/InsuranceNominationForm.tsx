@@ -60,15 +60,32 @@ const InsuranceNominationForm = ({
 }: ISequentialFormProps): JSX.Element => {
   const formRef = React.useRef<HTMLDivElement>(null);
 
+  // React.useEffect(() => {
+  //   if (!document.getElementById('bootstrap-css')) {
+  //     const link = document.createElement('link');
+  //     link.id = 'bootstrap-css';
+  //     link.rel = 'stylesheet';
+  //     link.href =
+  //       'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css';
+  //     document.head.appendChild(link);
+  //   }
+  // }, []);
   React.useEffect(() => {
+
     if (!document.getElementById('bootstrap-css')) {
+
       const link = document.createElement('link');
+
       link.id = 'bootstrap-css';
+
       link.rel = 'stylesheet';
+
       link.href =
         'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css';
+
       document.head.appendChild(link);
     }
+
   }, []);
   const commonDateOfBirth =
     sharedDateOfBirth || getCandidateDateValue(employeePFData, candidateFieldNames.dateOfBirth);
@@ -162,68 +179,166 @@ const InsuranceNominationForm = ({
       signature: '',
     },
     validationSchema,
+    // onSubmit: async (values) => {
+    //   try {
+    //     const sp = getSP(context);
+    //     const response = await sp.web.lists
+    //       .getByTitle("PersonalAccidentalScheme")
+    //       .items.add({
+    //         Title: values.employeeName,
+    //         EmployeeName: values.employeeName,
+    //         FatherName: values.fatherOrHusbandName,
+    //         DOB: moment(
+    //           values.dateOfBirth,
+    //           'DD/MM/YYYY',
+    //           true
+    //         ).isValid()
+    //           ? moment(values.dateOfBirth, 'DD/MM/YYYY').format('YYYY-MM-DD')
+    //           : null,
+    //         // DOB: moment(values.dateOfBirth, 'DD/MM/YYYY').toISOString(),
+    //         Gender: values.sex,
+    //         EmployeeID: Number(values.employeeId || null),
+    //         Address: values.address,
+    //         DeclarationDate: moment(values.declarationDate, 'DD/MM/YYYY').toISOString(),
+    //         Place: values.place,
+    //         can_id: String(employeePFData?.ID),
+    //       });
+    //     const parentId = response?.data?.Id;
+    //     const itemId = response.data.Id;
+    //     if (values.signature) {
+    //       const base64 = values.signature.split(",")[1];
+    //       const byteCharacters = atob(base64);
+    //       const byteNumbers = new Array(byteCharacters.length);
+    //       for (let i = 0; i < byteCharacters.length; i++) {
+    //         byteNumbers[i] = byteCharacters.charCodeAt(i);
+    //       }
+    //       const blob = new Blob([new Uint8Array(byteNumbers)], { type: "image/png" });
+    //       await sp.web.lists
+    //         .getByTitle("PersonalAccidentalScheme")
+    //         .items.getById(itemId)
+    //         .attachmentFiles.add("PersonalAccidentalSchemeSignature.png", blob);
+    //     }
+    //     if (Array.isArray(values.nominees)) {
+    //       for (const nominee of values.nominees) {
+    //         if (!nominee.nomineeNameAndAddress) continue;
+    //         await sp.web.lists.getByTitle("PersonalAccidentalSchemeNominees").items.add({
+    //           Title: values.employeeName,
+    //           ParentID: parentId,
+    //           NomineeName: nominee.nomineeNameAndAddress,
+    //           Relationship: nominee.relationship,
+    //           DOB: moment(
+    //             nominee.dateOfBirth,
+    //             'DD/MM/YYYY',
+    //             true
+    //           ).isValid()
+    //             ? moment(nominee.dateOfBirth, 'DD/MM/YYYY').format('YYYY-MM-DD')
+    //             : null,
+    //           ShareAmount: Number(nominee.shareAmount),
+    //           GuardianDetails: nominee.guardianDetails
+    //         });
+    //       }
+    //     }
+    //     onComplete?.();
+    //   } catch (error) {
+    //     console.error("Submit Error:", error);
+    //     alert("Submission failed");
+    //   }
+    // }
     onSubmit: async (values) => {
+
       try {
-        const sp = getSP(context);
-        const response = await sp.web.lists
-          .getByTitle("PersonalAccidentalScheme")
-          .items.add({
+
+        // SAME PAYLOAD FORMAT
+        // SAME STRUCTURE
+        // ONLY REMOVED API CALLS
+
+        const payload = {
+
+          mainItem: {
+
             Title: values.employeeName,
+
             EmployeeName: values.employeeName,
+
             FatherName: values.fatherOrHusbandName,
+
             DOB: moment(
               values.dateOfBirth,
               'DD/MM/YYYY',
               true
             ).isValid()
-              ? moment(values.dateOfBirth, 'DD/MM/YYYY').format('YYYY-MM-DD')
+              ? moment(
+                values.dateOfBirth,
+                'DD/MM/YYYY'
+              ).format('YYYY-MM-DD')
               : null,
+
             // DOB: moment(values.dateOfBirth, 'DD/MM/YYYY').toISOString(),
+
             Gender: values.sex,
-            EmployeeID: Number(values.employeeId || null),
+
+            EmployeeID: Number(
+              values.employeeId || null
+            ),
+
             Address: values.address,
-            DeclarationDate: moment(values.declarationDate, 'DD/MM/YYYY').toISOString(),
+
+            DeclarationDate: moment(
+              values.declarationDate,
+              'DD/MM/YYYY'
+            ).toISOString(),
+
             Place: values.place,
+
             can_id: String(employeePFData?.ID),
-          });
-        const parentId = response?.data?.Id;
-        const itemId = response.data.Id;
-        if (values.signature) {
-          const base64 = values.signature.split(",")[1];
-          const byteCharacters = atob(base64);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const blob = new Blob([new Uint8Array(byteNumbers)], { type: "image/png" });
-          await sp.web.lists
-            .getByTitle("PersonalAccidentalScheme")
-            .items.getById(itemId)
-            .attachmentFiles.add("PersonalAccidentalSchemeSignature.png", blob);
-        }
-        if (Array.isArray(values.nominees)) {
-          for (const nominee of values.nominees) {
-            if (!nominee.nomineeNameAndAddress) continue;
-            await sp.web.lists.getByTitle("PersonalAccidentalSchemeNominees").items.add({
-              Title: values.employeeName,
-              ParentID: parentId,
-              NomineeName: nominee.nomineeNameAndAddress,
-              Relationship: nominee.relationship,
-              DOB: moment(
-                nominee.dateOfBirth,
-                'DD/MM/YYYY',
-                true
-              ).isValid()
-                ? moment(nominee.dateOfBirth, 'DD/MM/YYYY').format('YYYY-MM-DD')
-                : null,
-              ShareAmount: Number(nominee.shareAmount),
-              GuardianDetails: nominee.guardianDetails
-            });
-          }
-        }
-        onComplete?.();
+          },
+
+          signature: values.signature,
+
+          nominees:
+            Array.isArray(values.nominees)
+              ? values.nominees.map((nominee: any) => ({
+
+                Title: values.employeeName,
+
+                NomineeName:
+                  nominee.nomineeNameAndAddress,
+
+                Relationship:
+                  nominee.relationship,
+
+                DOB: moment(
+                  nominee.dateOfBirth,
+                  'DD/MM/YYYY',
+                  true
+                ).isValid()
+                  ? moment(
+                    nominee.dateOfBirth,
+                    'DD/MM/YYYY'
+                  ).format('YYYY-MM-DD')
+                  : null,
+
+                ShareAmount:
+                  Number(
+                    nominee.shareAmount
+                  ),
+
+                GuardianDetails:
+                  nominee.guardianDetails
+              }))
+              : []
+        };
+
+        // PASS FULL PAYLOAD
+        onComplete?.(payload);
+
       } catch (error) {
-        console.error("Submit Error:", error);
+
+        console.error(
+          "Submit Error:",
+          error
+        );
+
         alert("Submission failed");
       }
     }
@@ -445,7 +560,7 @@ const InsuranceNominationForm = ({
                     <p className="text-danger small mb-0">{formik.errors.sex}</p>
                   )}
                 </Col>
-                {employeePFData?.EmailID === 'hr@natit.in' && (
+                {employeePFData?.EmailID === 'hr@natit.in' || employeePFData?.EmailID === 'testgauge@natit.in' && (
                   <Col md={4}>
                     <Form.Label>5. EMP ID</Form.Label>
                     <Form.Control
@@ -809,7 +924,7 @@ const InsuranceNominationForm = ({
                 >
                   {formik.isSubmitting ? 'Submitting...' : 'Submit Form'}
                 </Button>
-                {employeePFData?.EmailID === 'hr@natit.in' && (
+                {employeePFData?.EmailID === 'hr@natit.in' || employeePFData?.EmailID === 'testgauge@natit.in' && (
                   <Button
                     type="button"
                     className="border-0 ms-2"

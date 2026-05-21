@@ -47,15 +47,15 @@ const NatItServicesHrPolicyManual = ({
         setLoading(true);
 
         try {
-            await sp.web.lists.getByTitle("HRPolicyManual").items.add({
+            const payload = {
                 Title: "HR Policy Manual Acknowledgement",
                 employee_name: employeePFData?.Title || "Unknown",
                 can_id: String(employeePFData?.ID),
                 acknowledgement_flag: true,
                 acknowledgement_time: new Date()
-            });
+            }
 
-            onComplete?.();
+            onComplete?.(payload);
 
         } catch (error) {
             console.error("Submission Error:", error);
