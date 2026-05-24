@@ -212,7 +212,7 @@ const JoiningFormalities = ({
         fatherName: string;
         maritalStatus: string;
         spouseName: string;
-        photoFile: File | null;
+        photoFile: File | string | null;
         education: EducationRow[];
         bankName: string;
         accountNo: string;
@@ -222,7 +222,7 @@ const JoiningFormalities = ({
         joiningLetterDate: string;
         joiningDateText: string;
         designationText: string;
-        signatureName: string;
+        signatureName: File | string;
     }>({
         initialValues: {
             employeeId: "",
@@ -273,189 +273,107 @@ const JoiningFormalities = ({
             signatureName: "",
         },
         validationSchema: joiningValidationSchema,
-        // onSubmit: async (values) => {
-        //     try {
-        //         const sp = getSP(context);
-        //         if (!values.fullName) return;
-        //         const empResponse = await sp.web.lists
-        //             .getByTitle("JoiningFormalities")
-        //             .items.add({
-        //                 Title: values.fullName,
-        //                 hr_employee_ID: values.employeeId,
-        //                 hr_designation: values.designation,
-        //                 hr_department: values.department,
-        //                 employee_full_name: values.fullName,
-        //                 employee_DOB: moment(values.dob, 'DD/MM/YYYY').toISOString(),
-        //                 employee_actual_DOB: moment(values.actualDob, 'DD/MM/YYYY').toISOString(),
-        //                 employee_reporting_to: values.reportingTo,
-        //                 bank_name_as_per_bank_records: values.bankName,
-        //                 bank_account_no: values.accountNo,
-        //                 bank_IFSC_code: values.ifscCode,
-        //                 bank_branch: values.branchDetails,
-        //                 can_id: String(employeePFData?.ID),
-        //             });
-        //         const employeeSPID = empResponse?.data?.Id;
-        //         if (Array.isArray(values.education)) {
-        //             for (const edu of values.education) {
-        //                 if (!edu.qualification) continue;
-        //                 await sp.web.lists.getByTitle("EmployeeEducation").items.add({
-        //                     Title: values.fullName,
-        //                     EmployeeID: String(employeeSPID),
-        //                     Qualification: edu.qualification,
-        //                     Institute: edu.institute,
-        //                     Specialization: edu.specialization,
-        //                     YearCompleted: edu.year
-        //                         ? moment(edu.year, 'YYYY').toISOString()
-        //                         : null
-        //                 });
-        //             }
-        //         }
-
-        //         if (Array.isArray(values.references)) {
-        //             for (const ref of values.references) {
-        //                 if (!ref.name) continue;
-        //                 await sp.web.lists.getByTitle("EmployeeReferences").items.add({
-        //                     Title: values.fullName,
-        //                     EmployeeID: String(employeeSPID),
-        //                     Name: ref.name,
-        //                     Occupation: ref.occupation,
-        //                     Relationship: ref.relationship,
-        //                     Contact: ref.contact
-        //                 });
-        //             }
-        //         }
-        //         onComplete?.();
-        //     } catch (error) {
-        //         console.error("Submit Error:", error);
-        //         alert("Submission failed");
-        //     }
-        // }
         onSubmit: async (values) => {
-
             try {
-
-                // SAME STRUCTURE
-                // ONLY REMOVED API CALLS
-
+                const sp = getSP(context);
                 if (!values.fullName) return;
-
-                const payload = {
-
-                    mainItem: {
-
+                const empResponse = await sp.web.lists
+                    .getByTitle("JoiningFormalities")
+                    .items.add({
                         Title: values.fullName,
+                        hr_employee_ID: values.employeeId,
+                        hr_designation: values.designation,
+                        hr_department: values.department,
+                        employee_full_name: values.fullName,
+                        employee_DOB: moment(values.dob, 'DD/MM/YYYY').toISOString(),
+                        employee_actual_DOB: moment(values.actualDob, 'DD/MM/YYYY').toISOString(),
+                        employee_reporting_to: values.reportingTo,
+                        bank_name_as_per_bank_records: values.bankName,
+                        bank_account_no: values.accountNo,
+                        bank_IFSC_code: values.ifscCode,
+                        bank_branch: values.branchDetails,
+                        joining_letter_date: values.joiningLetterDate
+                            ? moment(values.joiningLetterDate, 'DD/MM/YYYY').toISOString()
+                            : null,
 
-                        hr_employee_ID:
-                            values.employeeId,
+                        joining_date_text: values.joiningDateText
+                            ? moment(values.joiningDateText, 'DD/MM/YYYY').toISOString()
+                            : null,
 
-                        hr_designation:
-                            values.designation,
+                        designation_text: values.designationText,
+                        can_id: String(employeePFData?.ID),
+                    });
+                // const employeeSPID = empResponse?.data?.Id;
+                // if (Array.isArray(values.education)) {
+                const employeeSPID = empResponse?.data?.Id;
 
-                        hr_department:
-                            values.department,
+                // PHOTO UPLOAD
+                if (
+                    values.photoFile &&
+                    typeof values.photoFile !== "string"
+                ) {
 
-                        employee_full_name:
-                            values.fullName,
+                    void sp.web.lists
+                        .getByTitle("JoiningFormalities")
+                        .items.getById(employeeSPID)
+                        .attachmentFiles.add(
+                            values.photoFile.name,
+                            values.photoFile
+                        )
+                        .catch((error) => {
+                            console.error("Photo upload error:", error);
+                        });
+                }
 
-                        employee_DOB:
-                            moment(
-                                values.dob,
-                                'DD/MM/YYYY'
-                            ).toISOString(),
+                // SIGNATURE UPLOAD
+                if (
+                    values.signatureName &&
+                    typeof values.signatureName !== "string"
+                ) {
 
-                        employee_actual_DOB:
-                            moment(
-                                values.actualDob,
-                                'DD/MM/YYYY'
-                            ).toISOString(),
+                    void sp.web.lists
+                        .getByTitle("JoiningFormalities")
+                        .items.getById(employeeSPID)
+                        .attachmentFiles.add(
+                            values.signatureName.name,
+                            values.signatureName
+                        )
+                        .catch((error) => {
+                            console.error("Signature upload error:", error);
+                        });
+                }
 
-                        employee_reporting_to:
-                            values.reportingTo,
-
-                        bank_name_as_per_bank_records:
-                            values.bankName,
-
-                        bank_account_no:
-                            values.accountNo,
-
-                        bank_IFSC_code:
-                            values.ifscCode,
-
-                        bank_branch:
-                            values.branchDetails,
-
-                        can_id:
-                            String(employeePFData?.ID),
-                    },
-
-                    education:
-                        Array.isArray(values.education)
-                            ? values.education
-                                .filter(
-                                    (edu: any) =>
-                                        edu.qualification
-                                )
-                                .map((edu: any) => ({
-
-                                    Title:
-                                        values.fullName,
-
-                                    Qualification:
-                                        edu.qualification,
-
-                                    Institute:
-                                        edu.institute,
-
-                                    Specialization:
-                                        edu.specialization,
-
-                                    YearCompleted:
-                                        edu.year
-                                            ? moment(
-                                                edu.year,
-                                                'YYYY'
-                                            ).toISOString()
-                                            : null
-                                }))
-                            : [],
-
-                    references:
-                        Array.isArray(values.references)
-                            ? values.references
-                                .filter(
-                                    (ref: any) =>
-                                        ref.name
-                                )
-                                .map((ref: any) => ({
-
-                                    Title:
-                                        values.fullName,
-
-                                    Name:
-                                        ref.name,
-
-                                    Occupation:
-                                        ref.occupation,
-
-                                    Relationship:
-                                        ref.relationship,
-
-                                    Contact:
-                                        ref.contact
-                                }))
-                            : []
-                };
-
-                // PASS FULL PAYLOAD
-                onComplete?.(payload);
-
+                if (Array.isArray(values.education)) {
+                    for (const edu of values.education) {
+                        if (!edu.qualification) continue;
+                        await sp.web.lists.getByTitle("EmployeeEducation").items.add({
+                            Title: values.fullName,
+                            EmployeeID: String(employeeSPID),
+                            Qualification: edu.qualification,
+                            Institute: edu.institute,
+                            Specialization: edu.specialization,
+                            YearCompleted: edu.year
+                                ? moment(edu.year, 'YYYY').toISOString()
+                                : null
+                        });
+                    }
+                }
+                if (Array.isArray(values.references)) {
+                    for (const ref of values.references) {
+                        if (!ref.name) continue;
+                        await sp.web.lists.getByTitle("EmployeeReferences").items.add({
+                            Title: values.fullName,
+                            EmployeeID: String(employeeSPID),
+                            Name: ref.name,
+                            Occupation: ref.occupation,
+                            Relationship: ref.relationship,
+                            Contact: ref.contact
+                        });
+                    }
+                }
+                onComplete?.();
             } catch (error) {
-
-                console.error(
-                    "Submit Error:",
-                    error
-                );
-
+                console.error("Submit Error:", error);
                 alert("Submission failed");
             }
         }
@@ -482,6 +400,131 @@ const JoiningFormalities = ({
         };
 
         void autoFill();
+    }, [employeePFData]);
+    React.useEffect(() => {
+
+        const loadSavedFormData = async (): Promise<void> => {
+
+            try {
+
+                const sp = getSP(context);
+
+                if (!employeePFData?.ID) return;
+
+                const items = await sp.web.lists
+                    .getByTitle("JoiningFormalities")
+                    .items
+                    .filter(`can_id eq '${employeePFData.ID}'`)
+                    .top(1)
+                    .orderBy("ID", false)();
+
+                if (items.length === 0) return;
+
+                const data = items[0];
+
+                const employeeSPID = data.ID;
+
+                // EDUCATION
+                const educationItems = await sp.web.lists
+                    .getByTitle("EmployeeEducation")
+                    .items
+                    .filter(`EmployeeID eq '${employeeSPID}'`)();
+
+                // REFERENCES
+                const referenceItems = await sp.web.lists
+                    .getByTitle("EmployeeReferences")
+                    .items
+                    .filter(`EmployeeID eq '${employeeSPID}'`)();
+
+                // ATTACHMENTS
+                const attachments = await sp.web.lists
+                    .getByTitle("JoiningFormalities")
+                    .items.getById(employeeSPID)
+                    .attachmentFiles();
+
+                const photoAttachment = attachments.find((a: any) =>
+                    a.FileName.match(/\.(jpg|jpeg|png)$/i)
+                );
+
+                await joiningFormValidation.setValues({
+
+                    ...joiningFormValidation.values,
+
+                    employeeId: data.hr_employee_ID || "",
+
+                    designation: data.hr_designation || "",
+
+                    department: data.hr_department || "",
+
+                    reportingTo: data.employee_reporting_to || "",
+
+                    fullName: data.employee_full_name || "",
+
+                    dob: data.employee_DOB
+                        ? moment(data.employee_DOB).format("DD/MM/YYYY")
+                        : "",
+
+                    actualDob: data.employee_actual_DOB
+                        ? moment(data.employee_actual_DOB).format("DD/MM/YYYY")
+                        : "",
+
+                    bankName: data.bank_name_as_per_bank_records || "",
+
+                    accountNo: data.bank_account_no || "",
+
+                    ifscCode: data.bank_IFSC_code || "",
+
+                    branchDetails: data.bank_branch || "",
+
+                    photoFile: photoAttachment
+                        ? photoAttachment.ServerRelativeUrl
+                        : null,
+
+                    education:
+                        educationItems.length > 0
+                            ? educationItems.map((edu: any) => ({
+                                qualification: edu.Qualification || "",
+                                institute: edu.Institute || "",
+                                specialization: edu.Specialization || "",
+                                year: edu.YearCompleted
+                                    ? moment(edu.YearCompleted).format("YYYY")
+                                    : ""
+                            }))
+                            : [],
+
+                    joiningLetterDate: data.joining_letter_date
+                        ? moment(data.joining_letter_date).format("DD/MM/YYYY")
+                        : "",
+
+                    joiningDateText: data.joining_date_text
+                        ? moment(data.joining_date_text).format("DD/MM/YYYY")
+                        : "",
+
+                    designationText: data.designation_text || "",
+
+                    signatureName: "",
+                    references:
+                        referenceItems.length > 0
+                            ? referenceItems.map((ref: any) => ({
+                                name: ref.Name || "",
+                                occupation: ref.Occupation || "",
+                                relationship: ref.Relationship || "",
+                                contact: ref.Contact || ""
+                            }))
+                            : []
+
+                });
+
+            } catch (error) {
+
+                console.error("Auto populate error:", error);
+
+            }
+
+        };
+
+        void loadSavedFormData();
+
     }, [employeePFData]);
     React.useEffect(() => {
         if (sharedEmployeeSignature && joiningFormValidation.values.signatureName !== sharedEmployeeSignature) {
@@ -634,7 +677,7 @@ const JoiningFormalities = ({
                                 <div className="align-items-start mb-4 row">
                                     <div className="col-md-8">
                                         <div className="text-center text-md-start">
-                                            <h3 className="fw-bold">EMPLOYEE INFORMATION SHEET</h3>
+                                            <h3 className="fw-bold">EMPLOYEE INFORMATION SHEET testing</h3>
                                             <p className="mb-0">NAT IT Services Pvt Ltd</p>
                                             <small>Plot No:21, Sruthi Sadan, Gachibowli, Hyderabad</small>
                                         </div>
@@ -691,7 +734,13 @@ const JoiningFormalities = ({
                                                 >
                                                     {joiningFormValidation.values.photoFile ? (
                                                         <img
-                                                            src={URL.createObjectURL(joiningFormValidation.values.photoFile)}
+                                                            src={
+                                                                typeof joiningFormValidation.values.photoFile === "string"
+                                                                    ? joiningFormValidation.values.photoFile
+                                                                    : joiningFormValidation.values.photoFile
+                                                                        ? URL.createObjectURL(joiningFormValidation.values.photoFile)
+                                                                        : ""
+                                                            }
                                                             alt="Employee preview"
                                                             style={{
                                                                 maxWidth: "100%",
@@ -709,11 +758,27 @@ const JoiningFormalities = ({
                                                 </div>
                                             </div>
                                             {/* FILE NAME */}
-                                            {joiningFormValidation.values.photoFile && (
+                                            {/* {joiningFormValidation.values.photoFile && (
                                                 <small className="d-block mt-2 text-center text-muted">
                                                     {joiningFormValidation.values.photoFile.name}
                                                 </small>
                                             )}
+                                            {joiningFormValidation.touched.photoFile &&
+                                                joiningFormValidation.errors.photoFile && (
+                                                    <p className="mt-2 mb-0 text-center text-danger small">
+                                                        {joiningFormValidation.errors.photoFile}
+                                                    </p>
+                                                )} */}
+                                            {joiningFormValidation.values.photoFile && (
+                                                <small className="d-block mt-2 text-center text-muted">
+
+                                                    {typeof joiningFormValidation.values.photoFile === "string"
+                                                        ? joiningFormValidation.values.photoFile.split("/").pop()
+                                                        : joiningFormValidation.values.photoFile.name}
+
+                                                </small>
+                                            )}
+
                                             {joiningFormValidation.touched.photoFile &&
                                                 joiningFormValidation.errors.photoFile && (
                                                     <p className="mt-2 mb-0 text-center text-danger small">
@@ -724,13 +789,13 @@ const JoiningFormalities = ({
                                     </div>
                                 </div>
                                 {/* Employee Details */}
-                                {employeePFData?.EmailID === 'hr@natit.in' || employeePFData?.EmailID === 'testgauge@natit.in' && (
+                                {employeePFData?.EmailID === 'hr@natit.in' && (
                                     <div>
                                         <h5
                                             className="text-white p-2 rounded"
                                             style={{ backgroundColor: "#f18200" }}
                                         >
-                                            Employee Details
+                                            Employee Details Testing the app
                                         </h5>
                                         <Row className="mb-3">
                                             <Col md={6}>
@@ -824,7 +889,7 @@ const JoiningFormalities = ({
                                     className="text-white p-2 rounded"
                                     style={{ backgroundColor: "#f18200" }}
                                 >
-                                    Personal Information 
+                                    Personal Information
                                 </h5>
                                 <Row className="mb-3">
                                     <Col md={6}>
@@ -1230,13 +1295,25 @@ const JoiningFormalities = ({
                                         {/* Signature */}
                                         <p>
                                             Signature{" "}
-                                            <span className="d-inline-block ms-2" style={{ width: "260px", verticalAlign: 'middle' }}>
+                                            <span
+                                                className="d-inline-block ms-2"
+                                                style={{ width: "260px", verticalAlign: 'middle' }}
+                                            >
                                                 <SignatureUpload
                                                     name="signatureName"
                                                     value={joiningFormValidation.values.signatureName}
                                                     onChange={(value) => {
-                                                        joiningFormValidation.setFieldValue('signatureName', value).catch(() => undefined);
-                                                        onEmployeeSignatureChange?.(value);
+
+                                                        joiningFormValidation
+                                                            .setFieldValue('signatureName', value)
+                                                            .catch(() => undefined);
+
+                                                        onEmployeeSignatureChange?.(
+                                                            typeof value === "string"
+                                                                ? value
+                                                                : URL.createObjectURL(value)
+                                                        );
+
                                                     }}
                                                     onBlur={joiningFormValidation.handleBlur}
                                                 />
@@ -1259,7 +1336,7 @@ const JoiningFormalities = ({
                                     >
                                         Submit Form
                                     </Button>
-                                    {employeePFData?.EmailID === 'hr@natit.in' || employeePFData?.EmailID === 'testgauge@natit.in' && (
+                                    {employeePFData?.EmailID === 'hr@natit.in' && (
                                         <Button
                                             type="button"
                                             className="border-0 ms-2"

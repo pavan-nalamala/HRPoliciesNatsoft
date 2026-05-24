@@ -24,47 +24,38 @@ const NatItServicesHandbook = ({ onComplete, employeePFData, isSubmitted }: ISeq
   const submitAcknowledgement = async () => {
     setLoading(true);
     try {
-      // const siteUrl = "https://natitin.sharepoint.com/sites/NatIt_HRRecruitment";
-      // const digestRes = await fetch(`${siteUrl}/_api/contextinfo`, {
-      //   method: "POST",
-      //   headers: {
-      //     Accept: "application/json;odata=nometadata"
-      //   }
-      // });
-      // const digestData = await digestRes.json();
-      // const response = await fetch(
-      //   `${siteUrl}/_api/web/lists/getbytitle('EmployeeHandBook')/items`,
-      //   {
-      //     method: "POST",
-      //     headers: {
-      //       Accept: "application/json;odata=nometadata",
-      //       "Content-Type": "application/json;odata=nometadata",
-      //       "X-RequestDigest": digestData.FormDigestValue
-      //     },
-      //     body: JSON.stringify({
-      //       Title: "Employee Handbook Acknowledgement",
-      //       employee_name: employeePFData?.Title || "Unknown",
-      //       acknowledgement_flag: true,
-      //       acknowledgement_time: new Date().toISOString(),
-      //       can_id: String(employeePFData?.ID)
-      //     })
-      //   }
-      // );
-      // if (!response.ok) {
-      //   const err = await response.text();
-      //   console.error("SharePoint Error:", err);
-      //   throw new Error(err);
-      // }
-      // onComplete?.();
-      const payload = {
-
-        Title: "Employee Handbook Acknowledgement",
-        employee_name: employeePFData?.Title || "Unknown",
-        acknowledgement_flag: true,
-        acknowledgement_time: new Date().toISOString(),
-        can_id: String(employeePFData?.ID)
-      };
-      onComplete?.(payload);
+      const siteUrl = "https://natitin.sharepoint.com/sites/NatIt_HRRecruitment";
+      const digestRes = await fetch(`${siteUrl}/_api/contextinfo`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json;odata=nometadata"
+        }
+      });
+      const digestData = await digestRes.json();
+      const response = await fetch(
+        `${siteUrl}/_api/web/lists/getbytitle('EmployeeHandBook')/items`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json;odata=nometadata",
+            "Content-Type": "application/json;odata=nometadata",
+            "X-RequestDigest": digestData.FormDigestValue
+          },
+          body: JSON.stringify({
+            Title: "Employee Handbook Acknowledgement",
+            employee_name: employeePFData?.Title || "Unknown",
+            acknowledgement_flag: true,
+            acknowledgement_time: new Date().toISOString(),
+            can_id: String(employeePFData?.ID)
+          })
+        }
+      );
+      if (!response.ok) {
+        const err = await response.text();
+        console.error("SharePoint Error:", err);
+        throw new Error(err);
+      }
+      onComplete?.();
     } catch (error) {
       console.error("Submit failed:", error);
       alert("Submission failed");
@@ -90,8 +81,8 @@ const NatItServicesHandbook = ({ onComplete, employeePFData, isSubmitted }: ISeq
             className="text-white fw-bold fs-4 text-center py-3 border-0"
             style={{ backgroundColor: '#f18200' }}
           >
-            NAT IT Services - Employee Handbook
-          </Card.Header>
+            NAT IT Services - Employee Handbook testing
+          </Card.Header> 
           <Card.Body className="p-4">
             <Alert variant="light" className="border rounded-3 mb-4">
               Please review the Employee Handbook carefully before continuing.

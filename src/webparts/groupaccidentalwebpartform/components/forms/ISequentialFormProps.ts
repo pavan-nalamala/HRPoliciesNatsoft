@@ -2,7 +2,7 @@ import { SPHttpClient } from '@microsoft/sp-http';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 
 export interface ISequentialFormProps {
-  onComplete?: (payload:any) => void;
+  onComplete?: () => void;
 
   // Signature sharing
   sharedEmployeeSignature?: string;
@@ -14,8 +14,7 @@ export interface ISequentialFormProps {
   spHttpClient?: SPHttpClient;
   siteUrl?: string;
   context?: WebPartContext;
-  currentUser?: any; 
-  employeePFData:any;
+  currentUser?: any;
+  employeePFData: any;
   isSubmitted?: boolean;
-
 }

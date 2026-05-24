@@ -46,13 +46,6 @@ interface IGroupaccidentalwebpartformState {
   currentUser: any;
   employeePFData: any[];
   showThankYouModal: boolean;
-  handbookPayload?: any;
-  hrPolicyPayload?: any;
-  joiningPayload?: any;
-  teamInsurancePayload?: any;
-  gratuityPayload?: any;
-  insurancePayload?: any;
-  pfPayload?: any;
 }
 
 const FORM_NAV_ITEMS: IFormNavItem[] = [
@@ -115,15 +108,7 @@ export default class Groupaccidentalwebpartform extends React.Component<
     sharedDateOfBirth: '',
     currentUser: null,
     employeePFData: [],
-    showThankYouModal: false,
-
-    handbookPayload: null,
-    hrPolicyPayload: null,
-    joiningPayload: null,
-    teamInsurancePayload: null,
-    gratuityPayload: null,
-    insurancePayload: null,
-    pfPayload: null
+    showThankYouModal: false
   };
 
   private _isAdminUser(): boolean {
@@ -227,7 +212,7 @@ export default class Groupaccidentalwebpartform extends React.Component<
             return;
           }
 
-          void this._loadCompletedForms(email, true);
+          void this._loadCompletedForms(email);
         }
       );
 
@@ -236,7 +221,7 @@ export default class Groupaccidentalwebpartform extends React.Component<
     }
   };
 
-  private _loadCompletedForms = async (email: string, forceFirst?: boolean): Promise<void> => {
+  private _loadCompletedForms = async (email: string): Promise<void> => {
 
     const candidateId = this.state.employeePFData?.[0]?.ID;
 
@@ -283,19 +268,10 @@ export default class Groupaccidentalwebpartform extends React.Component<
     );
 
     const nextForm = this._getNextIncompleteForm(completedForms);
-    const visibleTabs = this._getVisibleTabs();
-
-    let selectedForm: ViewKey;
-
-    if (forceFirst) {
-      selectedForm = visibleTabs[0]?.key ?? 'natItServicesHandbook';
-    } else {
-      selectedForm = nextForm === 'thankYou' ? 'pfDeclaration' : nextForm;
-    }
 
     this.setState({
       completedForms,
-      selectedForm,
+      selectedForm: nextForm === 'thankYou' ? 'pfDeclaration' : nextForm,
       showThankYouModal: false
     });
   };
@@ -314,44 +290,7 @@ export default class Groupaccidentalwebpartform extends React.Component<
     return true;
   }
 
-  // private _handleFormComplete = (key: FormKey): void => {
-
-  //   this.setState(prevState => {
-
-  //     const completedForms: Partial<Record<FormKey, boolean>> = {
-  //       ...prevState.completedForms,
-  //       [key]: true
-  //     };
-
-  //     const nextForm = this._getNextIncompleteForm(completedForms);
-  //     const shouldShowThankYouModal =
-  //       key === 'pfDeclaration' && this._areAllFormsCompleted(completedForms);
-
-  //     return {
-  //       completedForms,
-  //       selectedForm: nextForm === 'thankYou' ? key : nextForm,
-  //       sharedEmployeeSignature: prevState.sharedEmployeeSignature,
-  //       showThankYouModal: shouldShowThankYouModal
-  //     };
-  //   }, async () => {
-  //     if (key === 'pfDeclaration') {
-  //       const email = this.state.currentUser?.mail || this.state.currentUser?.userPrincipalName;
-
-  //       if (email) {
-  //         await this._loadCompletedForms(email);
-
-  //         if (this._areAllFormsCompleted(this.state.completedForms)) {
-  //           this.setState({ showThankYouModal: true });
-  //         }
-  //       }
-  //     }
-  //   });
-  // };
-
-  private _handleFormComplete = (
-    key: FormKey,
-    payload?: any
-  ): void => {
+  private _handleFormComplete = (key: FormKey): void => {
 
     this.setState(prevState => {
 
@@ -361,182 +300,26 @@ export default class Groupaccidentalwebpartform extends React.Component<
       };
 
       const nextForm = this._getNextIncompleteForm(completedForms);
+      const shouldShowThankYouModal =
+        key === 'pfDeclaration' && this._areAllFormsCompleted(completedForms);
 
       return {
-
         completedForms,
-
-        selectedForm:
-          nextForm === 'thankYou'
-            ? key
-            : nextForm,
-
-        handbookPayload:
-          key === 'natItServicesHandbook'
-            ? payload
-            : prevState.handbookPayload,
-
-        hrPolicyPayload:
-          key === 'natItServicesHrPolicyManual'
-            ? payload
-            : prevState.hrPolicyPayload,
-
-        joiningPayload:
-          key === 'joiningFormalities'
-            ? payload
-            : prevState.joiningPayload,
-
-        teamInsurancePayload:
-          key === 'teamLifeInsuranceNomination'
-            ? payload
-            : prevState.teamInsurancePayload,
-
-        gratuityPayload:
-          key === 'gratuityNominationForm'
-            ? payload
-            : prevState.gratuityPayload,
-
-        insurancePayload:
-          key === 'insuranceNominationForm'
-            ? payload
-            : prevState.insurancePayload,
-
-        pfPayload:
-          key === 'pfDeclaration'
-            ? payload
-            : prevState.pfPayload
+        selectedForm: nextForm === 'thankYou' ? key : nextForm,
+        sharedEmployeeSignature: prevState.sharedEmployeeSignature,
+        sharedDateOfBirth: prevState.sharedDateOfBirth,
+        showThankYouModal: shouldShowThankYouModal
       };
-
-    }, async () => {
-
-      // LAST TAB ONLY
-      if (key === 'pfDeclaration') {
-
-        await this._submitAllForms();
-      }
     });
   };
-  private _submitAllForms = async (): Promise<void> => {
 
-    try {
-
-      const siteUrl =
-        "https://natitin.sharepoint.com/sites/NatIt_HRRecruitment";
-
-      const digestRes = await fetch(
-        `${siteUrl}/_api/contextinfo`,
-        {
-          method: "POST",
-          headers: {
-            Accept: "application/json;odata=nometadata"
-          }
-        }
-      );
-
-      const digestData = await digestRes.json();
-
-      const headers = {
-        Accept: "application/json;odata=nometadata",
-        "Content-Type": "application/json;odata=nometadata",
-        "X-RequestDigest": digestData.FormDigestValue
-      };
-
-      // 1 Handbook
-      await fetch(
-        `${siteUrl}/_api/web/lists/getbytitle('EmployeeHandBook')/items`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(this.state.handbookPayload)
-        }
-      );
-
-      // 2 HR Policy
-      await fetch(
-        `${siteUrl}/_api/web/lists/getbytitle('HRPolicyManual')/items`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(this.state.hrPolicyPayload)
-        }
-      );
-
-      // 3 Joining
-      await fetch(
-        `${siteUrl}/_api/web/lists/getbytitle('JoiningFormalities')/items`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(this.state.joiningPayload)
-        }
-      );
-
-      // 4 Team Insurance
-      await fetch(
-        `${siteUrl}/_api/web/lists/getbytitle('InsuranceNominees')/items`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(this.state.teamInsurancePayload)
-        }
-      );
-
-      // 5 Gratuity
-      await fetch(
-        `${siteUrl}/_api/web/lists/getbytitle('GratuityNomination')/items`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(this.state.gratuityPayload)
-        }
-      );
-
-      // 6 Insurance
-      await fetch(
-        `${siteUrl}/_api/web/lists/getbytitle('TermLifeInsuranceForm')/items`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(this.state.insurancePayload)
-        }
-      );
-
-      // 7 PF
-      await fetch(
-        `${siteUrl}/_api/web/lists/getbytitle('EPFDeclarationForm11')/items`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(this.state.pfPayload)
-        }
-      );
-
-      const email =
-        this.state.currentUser?.mail ||
-        this.state.currentUser?.userPrincipalName;
-
-      if (email) {
-
-        await this._loadCompletedForms(email, true);
-      }
-
-      this.setState({
-        selectedForm: 'natItServicesHandbook',
-        showThankYouModal: true
-      });
-
-    } catch (error) {
-
-      console.error(error);
-      alert("All Forms Submission Failed");
-    }
-  };
   private _handleThankYouClose = (): void => {
 
     this.setState({ showThankYouModal: false });
   };
 
   private _handleEmployeeSignatureChange = (value: string): void => {
+
     this.setState({
       sharedEmployeeSignature: value
     });
@@ -565,13 +348,7 @@ export default class Groupaccidentalwebpartform extends React.Component<
             spHttpClient={spHttpClient}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
-            // onComplete={() => this._handleFormComplete('joiningFormalities')}
-            onComplete={(payload: any) =>
-              this._handleFormComplete(
-                'joiningFormalities',
-                payload
-              )
-            }
+            onComplete={() => this._handleFormComplete('joiningFormalities')}
             sharedEmployeeSignature={sharedEmployeeSignature}
             onEmployeeSignatureChange={this._handleEmployeeSignatureChange}
             sharedDateOfBirth={sharedDateOfBirth}
@@ -586,14 +363,8 @@ export default class Groupaccidentalwebpartform extends React.Component<
             spHttpClient={spHttpClient}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
-            // onComplete={() =>
-            //   this._handleFormComplete('teamLifeInsuranceNomination')
-            // }
-            onComplete={(payload: any) =>
-              this._handleFormComplete(
-                'teamLifeInsuranceNomination',
-                payload
-              )
+            onComplete={() =>
+              this._handleFormComplete('teamLifeInsuranceNomination')
             }
             sharedEmployeeSignature={sharedEmployeeSignature}
             onEmployeeSignatureChange={this._handleEmployeeSignatureChange}
@@ -609,14 +380,8 @@ export default class Groupaccidentalwebpartform extends React.Component<
             spHttpClient={spHttpClient}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
-            // onComplete={() =>
-            //   this._handleFormComplete('gratuityNominationForm')
-            // }
-            onComplete={(payload: any) =>
-              this._handleFormComplete(
-                'gratuityNominationForm',
-                payload
-              )
+            onComplete={() =>
+              this._handleFormComplete('gratuityNominationForm')
             }
             sharedEmployeeSignature={sharedEmployeeSignature}
             onEmployeeSignatureChange={this._handleEmployeeSignatureChange}
@@ -631,14 +396,8 @@ export default class Groupaccidentalwebpartform extends React.Component<
             context={this.props.context}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
-            // onComplete={() =>
-            //   this._handleFormComplete('insuranceNominationForm')
-            // }
-            onComplete={(payload: any) =>
-              this._handleFormComplete(
-                'insuranceNominationForm',
-                payload
-              )
+            onComplete={() =>
+              this._handleFormComplete('insuranceNominationForm')
             }
             sharedEmployeeSignature={sharedEmployeeSignature}
             onEmployeeSignatureChange={this._handleEmployeeSignatureChange}
@@ -657,14 +416,8 @@ export default class Groupaccidentalwebpartform extends React.Component<
             isSubmitted={!!this.state.completedForms.pfDeclaration}
             sharedDateOfBirth={sharedDateOfBirth}
             onSharedDateOfBirthChange={this._handleDateOfBirthChange}
-            // onComplete={() =>
-            //   this._handleFormComplete('pfDeclaration')
-            // }
-            onComplete={(payload: any) =>
-              this._handleFormComplete(
-                'pfDeclaration',
-                payload
-              )
+            onComplete={() =>
+              this._handleFormComplete('pfDeclaration')
             }
           />
         );
@@ -676,14 +429,8 @@ export default class Groupaccidentalwebpartform extends React.Component<
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
             isSubmitted={!!this.state.completedForms.natItServicesHrPolicyManual}
-            // onComplete={() =>
-            //   this._handleFormComplete('natItServicesHrPolicyManual')
-            // }
-             onComplete={(payload: any) =>
-              this._handleFormComplete(
-                'natItServicesHrPolicyManual',
-                payload
-              )
+            onComplete={() =>
+              this._handleFormComplete('natItServicesHrPolicyManual')
             }
           />
         );
@@ -695,14 +442,8 @@ export default class Groupaccidentalwebpartform extends React.Component<
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
             isSubmitted={!!this.state.completedForms.natItServicesHandbook}
-            // onComplete={() =>
-            //   this._handleFormComplete('natItServicesHandbook')
-            // }
-            onComplete={(payload: any) =>
-              this._handleFormComplete(
-                'natItServicesHandbook',
-                payload
-              )
+            onComplete={() =>
+              this._handleFormComplete('natItServicesHandbook')
             }
           />
         );

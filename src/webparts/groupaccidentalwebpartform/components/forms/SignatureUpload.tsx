@@ -2,8 +2,8 @@ import * as React from 'react';
 
 type SignatureUploadProps = {
   name: string;
-  value: string;
-  onChange: (value: string) => void;
+  value: string | File;
+  onChange: (value: File) => void;
   onBlur?: React.FocusEventHandler<HTMLInputElement>;
 };
 
@@ -15,20 +15,30 @@ const SignatureUpload = ({
 }: SignatureUploadProps): JSX.Element => {
   const inputRef = React.useRef<HTMLInputElement>(null);
 
+  // const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
+  //   const file = event.currentTarget.files?.[0];
+
+  //   if (!file) {
+  //     return;
+  //   }
+
+  //   const reader = new FileReader();
+  //   reader.onload = () => {
+  //     onChange(typeof reader.result === 'string' ? reader.result : '');
+  //   };
+  //   reader.readAsDataURL(file);
+  // };
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
+
     const file = event.currentTarget.files?.[0];
 
     if (!file) {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      onChange(typeof reader.result === 'string' ? reader.result : '');
-    };
-    reader.readAsDataURL(file);
+    onChange(file);
   };
-
   return (
     <div>
       <input
@@ -66,10 +76,13 @@ const SignatureUpload = ({
           cursor: 'pointer'
         }}
       >
-        {value ? (
+        {/* {value ? (
           <img
-            src={value}
-            alt="Signature preview"
+            src={
+              typeof value === "string"
+                ? value
+                : URL.createObjectURL(value)
+            } alt="Signature preview"
             style={{
               maxWidth: '100%',
               maxHeight: '110px',
@@ -78,6 +91,28 @@ const SignatureUpload = ({
           />
         ) : (
           <span className="text-muted" style={{ fontSize: '14px' }}>Upload signature</span>
+        )} */}
+        {value ? (
+          <img
+            src={
+              typeof value === "string"
+                ? value
+                : URL.createObjectURL(value)
+            }
+            alt="Signature preview"
+            style={{
+              maxWidth: '100%',
+              maxHeight: '110px',
+              objectFit: 'contain'
+            }}
+          />
+        ) : (
+          <span
+            className="text-muted"
+            style={{ fontSize: '14px' }}
+          >
+            Upload signature
+          </span>
         )}
       </div>
     </div>

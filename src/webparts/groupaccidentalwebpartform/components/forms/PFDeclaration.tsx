@@ -321,162 +321,209 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
         //         alert(error?.message || "Submission failed");
         //     }
         // }
+
         onSubmit: async (values) => {
 
             try {
 
-                // SAME STRUCTURE
-                // ONLY REMOVED API CALL
+                const sp = getSP(context);
 
-                const payload = {
+                // GENERATE UNIQUE TOKEN
+                // const token = crypto.randomUUID();
+                const token =
+                    Date.now().toString() +
+                    Math.random()
+                        .toString(36)
+                        .substring(2, 10);
 
-                    Title: values.employeeName,
+                const deepLink =
+                    `${window.location.origin}` +
+                    `${context?.pageContext.web.serverRelativeUrl}` +
+                    `/SitePages/PFForms.aspx#/admin-edit/${token}?mode=hr`;
+                // SAVE FORM
+                const response = await sp.web.lists
+                    .getByTitle("EPFDeclarationForm11")
+                    .items.add({
 
-                    EmployeeName: values.employeeName,
+                        Title: values.employeeName,
 
-                    DateOfBirth:
-                        values.dateOfBirth
-                            ? moment(
-                                values.dateOfBirth,
-                                "DD/MM/YYYY"
-                            ).toISOString()
-                            : null,
+                        EmployeeName: values.employeeName,
 
-                    FatherOrSpouse:
-                        values.relationType,
+                        DateOfBirth:
+                            values.dateOfBirth
+                                ? moment(
+                                    values.dateOfBirth,
+                                    "DD/MM/YYYY"
+                                ).toISOString()
+                                : null,
 
-                    FatherSpouseName:
-                        values.fatherOrSpouseName,
+                        FatherOrSpouse:
+                            values.relationType,
 
-                    Gender:
-                        values.gender,
+                        FatherSpouseName:
+                            values.fatherOrSpouseName,
 
-                    MaritalStatus:
-                        values.maritalStatus,
+                        Gender:
+                            values.gender,
 
-                    Email:
-                        values.email,
+                        MaritalStatus:
+                            values.maritalStatus,
 
-                    Mobile:
-                        values.mobileNo,
+                        Email:
+                            values.email,
 
-                    // SharePoint YES/NO columns
-                    EarlierMemberEPF1952:
-                        values.epf1952 === "Yes",
+                        Mobile:
+                            values.mobileNo,
 
-                    EarlierMemberEPS1995:
-                        values.eps1995 === "Yes",
+                        EarlierMemberEPF1952:
+                            values.epf1952 === "Yes",
 
-                    InternationalWorker:
-                        values.internationalWorker === "Yes",
+                        EarlierMemberEPS1995:
+                            values.eps1995 === "Yes",
 
-                    CountryOrigin:
-                        values.countryOrigin || "",
+                        InternationalWorker:
+                            values.internationalWorker === "Yes",
 
-                    PassportNo:
-                        values.passportNo || "",
+                        CountryOrigin:
+                            values.countryOrigin || "",
 
-                    PassportValidity:
-                        values.passportValidity
-                            ? moment(
-                                values.passportValidity,
-                                "DD/MM/YYYY"
-                            ).toISOString()
-                            : null,
+                        PassportNo:
+                            values.passportNo || "",
 
-                    EducationalQualification:
-                        values.educationalQualification,
+                        PassportValidity:
+                            values.passportValidity
+                                ? moment(
+                                    values.passportValidity,
+                                    "DD/MM/YYYY"
+                                ).toISOString()
+                                : null,
 
-                    SpeciallyAbled:
-                        values.speciallyAbled === "Yes",
+                        EducationalQualification:
+                            values.educationalQualification,
 
-                    DisabilityCategory:
-                        values.disabilityCategory || "",
+                        SpeciallyAbled:
+                            values.speciallyAbled === "Yes",
 
-                    BankAccountNo:
-                        values.bankAccNo,
+                        DisabilityCategory:
+                            values.disabilityCategory || "",
 
-                    IFSCCode:
-                        values.ifscCode,
+                        BankAccountNo:
+                            values.bankAccNo,
 
-                    AadhaarNo:
-                        values.aadharNo,
+                        IFSCCode:
+                            values.ifscCode,
 
-                    DoHavePan:
-                        values.doHavePan === "Yes",
+                        AadhaarNo:
+                            values.aadharNo,
 
-                    PANNo:
-                        values.pan || "",
+                        DoHavePan:
+                            values.doHavePan === "Yes",
 
-                    Place:
-                        values.place,
+                        PANNo:
+                            values.pan || "",
 
-                    DeclarationAccepted:
-                        values.declarationAccepted || false,
+                        Place:
+                            values.place,
 
-                    EmployeeDeclarationDate:
-                        new Date().toISOString(),
+                        DeclarationAccepted:
+                            values.declarationAccepted || false,
 
-                    PresentEmployerName:
-                        values.employerMemberName || "",
+                        EmployeeDeclarationDate:
+                            new Date().toISOString(),
 
-                    DateOfJoining:
-                        values.employerJoinDate
-                            ? moment(
-                                values.employerJoinDate,
-                                "DD/MM/YYYY"
-                            ).toISOString()
-                            : null,
+                        PresentEmployerName:
+                            values.employerMemberName || "",
 
-                    PFMemberID:
-                        values.employerPfMemberId || "",
+                        DateOfJoining:
+                            values.employerJoinDate
+                                ? moment(
+                                    values.employerJoinDate,
+                                    "DD/MM/YYYY"
+                                ).toISOString()
+                                : null,
 
-                    UAN:
-                        values.employerUan ||
-                        values.uan ||
-                        "",
+                        PFMemberID:
+                            values.employerPfMemberId || "",
 
-                    PreviousPFDetails:
-                        values.previousPf || "",
+                        UAN:
+                            values.employerUan ||
+                            values.uan ||
+                            "",
 
-                    EmployerKycPending:
-                        values.employerKycPending || false,
+                        PreviousPFDetails:
+                            values.previousPf || "",
 
-                    UANUploadedNotApproved:
-                        values.employerKycUploadedNotApproved || false,
+                        EmployerKycPending:
+                            values.employerKycPending || false,
 
-                    UANApprovedWithDSC:
-                        values.employerKycApproved || false,
+                        UANUploadedNotApproved:
+                            values.employerKycUploadedNotApproved || false,
 
-                    PreviousPFTransferred:
-                        values.employerTransferApproved || false,
+                        UANApprovedWithDSC:
+                            values.employerKycApproved || false,
 
-                    PhysicalClaimRequired:
-                        values.employerPhysicalClaim || false,
+                        PreviousPFTransferred:
+                            values.employerTransferApproved || false,
 
-                    EmployerDeclarationDate:
-                        values.employerDate
-                            ? moment(
-                                values.employerDate,
-                                "DD/MM/YYYY"
-                            ).toISOString()
-                            : null,
+                        PhysicalClaimRequired:
+                            values.employerPhysicalClaim || false,
 
-                    EmployerName:
-                        values.employerMemberName || "",
+                        EmployerDeclarationDate:
+                            values.employerDate
+                                ? moment(
+                                    values.employerDate,
+                                    "DD/MM/YYYY"
+                                ).toISOString()
+                                : null,
 
-                    SubmittedBy:
-                        context?.pageContext.user.displayName || "",
+                        EmployerName:
+                            values.employerMemberName || "",
 
-                    SubmittedEmail:
-                        context?.pageContext.user.email || "",
+                        SubmittedBy:
+                            context?.pageContext.user.displayName || "",
 
-                    SubmittedTime:
-                        new Date().toISOString()
-                };
+                        SubmittedEmail:
+                            context?.pageContext.user.email || "",
 
-                // PASS FULL PAYLOAD
-                onComplete?.(payload);
+                        SubmittedTime:
+                            new Date().toISOString(),
+
+                        // HR FLOW
+                        HRStatus: "Pending",
+
+                        AdminDeepLink:
+                            deepLink,
+
+                        // EMPLOYEE UNIQUE ID
+                        can_id:
+                            String(employeePFData?.ID),
+
+                        // UNIQUE TOKEN
+                        UniqueToken:
+                            token
+                    });
+
+                console.log(
+                    "HR Link:",
+                    deepLink
+                );
+                console.log("response", response);
+
+
+                alert(`
+Form Submitted Successfully
+
+HR Link:
+${deepLink}
+`);
+
+                // OPTIONAL
+                window.open(
+                    deepLink,
+                    "_blank"
+                );
+
+                onComplete?.();
 
             } catch (error: any) {
 
@@ -491,6 +538,8 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
                 );
             }
         }
+
+
     });
 
     React.useEffect(() => {
@@ -626,7 +675,7 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
         <Container fluid className="py-4 bg-light no-break" ref={formRef} >
             <Card
                 className="mx-auto shadow border-0 rounded-4"
-                style={{ maxWidth: 1150 }}
+
             >
                 <Card.Header
                     className="text-white text-center fw-bold fs-4"
@@ -1153,7 +1202,7 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
                                             {formik.errors.declarationAccepted}
                                         </p>
                                     )}
-                                {employeePFData?.EmailID === 'hr@natit.in' || employeePFData?.EmailID === 'testgauge@natit.in' && (
+                                {employeePFData?.EmailID === 'hr@natit.in' && (
                                     <Card className="mt-4 ">
                                         <Card.Header
                                             className="fw-bold text-center text-uppercase text-white"
@@ -1403,7 +1452,7 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
                             >
                                 {formik.isSubmitting ? "Submitting..." : "Submit"}
                             </Button>
-                            {employeePFData?.EmailID === 'hr@natit.in' || employeePFData?.EmailID === 'testgauge@natit.in' && (
+                            {employeePFData?.EmailID !== 'hr@natit.in' && (
                                 <Button
                                     type="button"
                                     className="border-0 ms-2"

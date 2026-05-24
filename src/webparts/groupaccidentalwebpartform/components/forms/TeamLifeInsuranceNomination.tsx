@@ -42,7 +42,7 @@ type TeamLifeInsuranceFormValues = {
   nominees: NomineeRow[];
   place: string;
   date: string;
-  signature: string;
+  signature: File | string;
 };
 
 const createEmptyNominee = (): NomineeRow => ({
@@ -61,6 +61,7 @@ const TeamLifeInsuranceNomination = ({
   employeePFData,
   sharedDateOfBirth,
 }: ISequentialFormProps): JSX.Element => {
+  const [signaturePreview, setSignaturePreview] = React.useState<string>("");
 
   const formRef = React.useRef<HTMLDivElement>(null);
   const headerStyle = {
@@ -156,7 +157,8 @@ const TeamLifeInsuranceNomination = ({
       ),
     place: Yup.string().required('Place is required'),
     date: createDateValidation('Date is required', 'Date must be in DD/MM/YYYY format'),
-    signature: Yup.string().required('Signature of Employee is required'),
+    signature: Yup.mixed<File | string>()
+      .required('Signature of Employee is required'),
   });
 
   const formik = useFormik<TeamLifeInsuranceFormValues>({
@@ -176,7 +178,9 @@ const TeamLifeInsuranceNomination = ({
     },
     validationSchema,
     // onSubmit: async (values) => {
+
     //   try {
+
     //     const sp = getSP(context);
 
     //     const response = await sp.web.lists
@@ -185,7 +189,8 @@ const TeamLifeInsuranceNomination = ({
     //         Title: values.employeeName,
     //         EmployeeName: values.employeeName,
     //         FatherName: values.fatherOrHusbandName,
-    //         DOB: moment(values.dateOfBirth, 'DD/MM/YYYY').toISOString(),
+    //         DOB: moment(values.dateOfBirth, 'DD/MM/YYYY', true)
+    //           .format('YYYY-MM-DD'),
     //         Gender: values.sex,
     //         EmployeeID: Number(values.employeeId || null),
     //         Address: values.address,
@@ -193,139 +198,132 @@ const TeamLifeInsuranceNomination = ({
     //         Place: values.place,
     //         can_id: String(employeePFData?.ID),
     //       });
+    //     if (values.signature instanceof File) {
+    //       await sp.web.lists
+    //         .getByTitle("InsuranceNomination")
+    //         .items.getById(itemId)
+    //         .attachmentFiles.add(
+    //           values.signature.name,
+    //           values.signature
+    //         );
+    //     }
 
     //     const parentId = response?.data?.Id;
 
     //     const itemId = response.data.Id;
 
-    //     if (values.signature) {
-    //       const base64 = values.signature.split(",")[1];
-
-    //       const byteCharacters = atob(base64);
-    //       const byteNumbers = new Array(byteCharacters.length);
-
-    //       for (let i = 0; i < byteCharacters.length; i++) {
-    //         byteNumbers[i] = byteCharacters.charCodeAt(i);
-    //       }
-
-    //       const blob = new Blob([new Uint8Array(byteNumbers)], { type: "image/png" });
+    //     // SIGNATURE ATTACHMENT
+    //     if (
+    //       values.signature &&
+    //       typeof values.signature !== "string"
+    //     ) {
 
     //       await sp.web.lists
     //         .getByTitle("InsuranceNomination")
     //         .items.getById(itemId)
-    //         .attachmentFiles.add("signature.png", blob);
+    //         .attachmentFiles.add(
+    //           values.signature.name,
+    //           values.signature
+    //         );
     //     }
 
+    //     // NOMINEES
     //     if (Array.isArray(values.nominees)) {
+
     //       for (const nominee of values.nominees) {
 
     //         if (!nominee.nomineeNameAndAddress) continue;
 
-    //         await sp.web.lists.getByTitle("InsuranceNominees").items.add({
-    //           Title: values.employeeName,
-    //           ParentID: parentId,
-    //           NomineeName: nominee.nomineeNameAndAddress,
-    //           Relationship: nominee.relationship,
-    //           DOB: moment(nominee.dateOfBirth, 'DD/MM/YYYY').toISOString(),
-    //           ShareAmount: Number(nominee.shareAmount),
-    //           GuardianDetails: nominee.guardianDetails
-    //         });
+    //         await sp.web.lists
+    //           .getByTitle("InsuranceNominees")
+    //           .items.add({
+    //             Title: values.employeeName,
+    //             ParentID: parentId,
+    //             NomineeName: nominee.nomineeNameAndAddress,
+    //             Relationship: nominee.relationship,
+    //             DOB: moment(values.dateOfBirth, 'DD/MM/YYYY', true)
+    //               .format('YYYY-MM-DD'),
+    //             ShareAmount: Number(nominee.shareAmount),
+    //             GuardianDetails: nominee.guardianDetails
+    //           });
     //       }
     //     }
 
     //     onComplete?.();
 
     //   } catch (error) {
+
     //     console.error("Submit Error:", error);
+
     //     alert("Submission failed");
+
     //   }
     // }
     onSubmit: async (values) => {
-
       try {
 
-        // SAME STRUCTURE
-        // ONLY REMOVED API CALLS
+        const sp = getSP(context);
 
-        const payload = {
-
-          mainItem: {
-
+        const response = await sp.web.lists
+          .getByTitle("InsuranceNomination")
+          .items.add({
             Title: values.employeeName,
-
             EmployeeName: values.employeeName,
-
             FatherName: values.fatherOrHusbandName,
-
-            DOB: moment(
-              values.dateOfBirth,
-              'DD/MM/YYYY'
-            ).toISOString(),
-
+            DOB: moment(values.dateOfBirth, 'DD/MM/YYYY', true)
+              .format('YYYY-MM-DD'),
             Gender: values.sex,
-
-            EmployeeID: Number(
-              values.employeeId || null
-            ),
-
+            EmployeeID: Number(values.employeeId || null),
             Address: values.address,
-
-            DeclarationDate: moment(
-              values.declarationDate,
-              'DD/MM/YYYY'
-            ).toISOString(),
-
+            DeclarationDate: moment(values.declarationDate, 'DD/MM/YYYY').toISOString(),
             Place: values.place,
-
             can_id: String(employeePFData?.ID),
-          },
+          });
 
-          signature:
-            values.signature,
+        const parentId = response?.data?.Id;
+        const itemId = response?.data?.Id;
 
-          nominees:
-            Array.isArray(values.nominees)
-              ? values.nominees
-                .filter(
-                  (nominee: any) =>
-                    nominee.nomineeNameAndAddress
-                )
-                .map((nominee: any) => ({
+        // SIGNATURE ATTACHMENT
+        if (values.signature instanceof File) {
 
-                  Title:
-                    values.employeeName,
+          console.log("Uploading Signature");
 
-                  NomineeName:
-                    nominee.nomineeNameAndAddress,
+          await sp.web.lists
+            .getByTitle("InsuranceNomination")
+            .items.getById(itemId)
+            .attachmentFiles.add(
+              values.signature.name,
+              values.signature
+            );
+        }
 
-                  Relationship:
-                    nominee.relationship,
+        // NOMINEES
+        if (Array.isArray(values.nominees)) {
 
-                  DOB: moment(
-                    nominee.dateOfBirth,
-                    'DD/MM/YYYY'
-                  ).toISOString(),
+          for (const nominee of values.nominees) {
 
-                  ShareAmount:
-                    Number(
-                      nominee.shareAmount
-                    ),
+            if (!nominee.nomineeNameAndAddress) continue;
 
-                  GuardianDetails:
-                    nominee.guardianDetails
-                }))
-              : []
-        };
+            await sp.web.lists
+              .getByTitle("InsuranceNominees")
+              .items.add({
+                Title: values.employeeName,
+                ParentID: parentId,
+                NomineeName: nominee.nomineeNameAndAddress,
+                Relationship: nominee.relationship,
+                DOB: moment(nominee.dateOfBirth, 'DD/MM/YYYY', true)
+                  .format('YYYY-MM-DD'),
+                ShareAmount: Number(nominee.shareAmount),
+                GuardianDetails: nominee.guardianDetails
+              });
+          }
+        }
 
-        // PASS FULL PAYLOAD
-        onComplete?.(payload);
+        onComplete?.();
 
       } catch (error) {
 
-        console.error(
-          "Submit Error:",
-          error
-        );
+        console.error("Submit Error:", error);
 
         alert("Submission failed");
       }
@@ -358,11 +356,132 @@ const TeamLifeInsuranceNomination = ({
     void autoFill();
   }, [employeePFData]);
 
+
   React.useEffect(() => {
-    if (sharedEmployeeSignature && formik.values.signature !== sharedEmployeeSignature) {
-      formik.setFieldValue('signature', sharedEmployeeSignature).catch(() => undefined);
+
+    const loadExistingData = async (): Promise<void> => {
+
+      try {
+
+        const sp = getSP(context);
+
+        const items = await sp.web.lists
+          .getByTitle("InsuranceNomination")
+          .items
+          .filter(`can_id eq '${employeePFData?.ID}'`)
+          .top(1)
+          .orderBy("Created", false)();
+
+        if (!items.length) return;
+
+        const item = items[0];
+
+        // GET ATTACHMENTS
+        const attachments = await sp.web.lists
+          .getByTitle("InsuranceNomination")
+          .items.getById(item.Id)
+          .attachmentFiles();
+
+        const signatureAttachment = attachments?.[0];
+
+        // FORM VALUES
+        await formik.setValues({
+
+          employeeName: item.EmployeeName || "",
+
+          fatherOrHusbandName: item.FatherName || "",
+
+          dateOfBirth: item.DOB
+            ? moment(item.DOB).format("DD/MM/YYYY")
+            : "",
+
+          sex: item.Gender || "",
+
+          employeeId: item.EmployeeID
+            ? String(item.EmployeeID)
+            : "",
+
+          address: item.Address || "",
+
+          declarationEmployeeName:
+            item.EmployeeName || "",
+
+          declarationDate: item.DeclarationDate
+            ? moment(item.DeclarationDate)
+              .format("DD/MM/YYYY")
+            : "",
+
+          nominees: [createEmptyNominee()],
+
+          place: item.Place || "",
+
+          date: item.Created
+            ? moment(item.Created)
+              .format("DD/MM/YYYY")
+            : "",
+
+          // IMPORTANT
+          signature:
+            signatureAttachment?.ServerRelativeUrl || ""
+
+        });
+
+        // PREVIEW
+        if (signatureAttachment?.ServerRelativeUrl) {
+
+          setSignaturePreview(
+            signatureAttachment.ServerRelativeUrl
+          );
+        }
+
+        // LOAD NOMINEES
+        const nomineeItems = await sp.web.lists
+          .getByTitle("InsuranceNominees")
+          .items
+          .filter(`ParentID eq ${item.Id}`)();
+
+        if (nomineeItems?.length) {
+
+          await formik.setFieldValue(
+            "nominees",
+            nomineeItems.map((n: any) => ({
+              nomineeNameAndAddress:
+                n.NomineeName || "",
+
+              relationship:
+                n.Relationship || "",
+
+              dateOfBirth:
+                n.DOB
+                  ? moment(n.DOB)
+                    .format("DD/MM/YYYY")
+                  : "",
+
+              shareAmount:
+                n.ShareAmount
+                  ? String(n.ShareAmount)
+                  : "",
+
+              guardianDetails:
+                n.GuardianDetails || ""
+            }))
+          );
+        }
+
+      } catch (error) {
+
+        console.error(
+          "Load Existing Data Error",
+          error
+        );
+      }
+    };
+
+    if (employeePFData?.ID) {
+      void loadExistingData();
     }
-  }, [sharedEmployeeSignature]);
+
+  }, [employeePFData]);
 
   const downloadPDF = async () => {
     const input = formRef.current;
@@ -466,7 +585,7 @@ const TeamLifeInsuranceNomination = ({
                 className="fw-bold text-white py-2 rounded"
                 style={{ backgroundColor: '#f18200' }}
               >
-                NOMINATION FORM FOR TERM LIFE INSURANCE
+                NOMINATION FORM FOR TERM LIFE INSURANCE test
               </h3>
             </div>
 
@@ -550,7 +669,7 @@ const TeamLifeInsuranceNomination = ({
                   )}
                 </Col>
 
-                {employeePFData?.EmailID === 'hr@natit.in' || employeePFData?.EmailID === 'testgauge@natit.in' && (
+                {employeePFData?.EmailID === 'hr@natit.in' && (
                   <Col md={4}>
                     <Form.Label>5. EMP ID</Form.Label>
                     <Form.Control
@@ -560,7 +679,7 @@ const TeamLifeInsuranceNomination = ({
                       value={formik.values.employeeId}
                       onChange={formik.handleChange}
                       onBlur={formik.handleBlur}
-                      
+                      disabled={employeePFData?.EmailID !== 'hr@natit.in'}
                     />
                   </Col>
                 )}
@@ -929,12 +1048,31 @@ const TeamLifeInsuranceNomination = ({
 
                 <Col md={6} className="d-flex flex-column justify-content-end">
                   <Form.Label>Signature of Employee</Form.Label>
-                  <SignatureUpload
+                  {/* <SignatureUpload
                     name="signature"
                     value={formik.values.signature}
                     onChange={(value) => {
                       formik.setFieldValue('signature', value).catch(() => undefined);
                       onEmployeeSignatureChange?.(value);
+                    }}
+                    onBlur={formik.handleBlur}
+                  /> */}
+                  <SignatureUpload
+                    name="signature"
+                    value={signaturePreview || formik.values.signature}
+                    onChange={(file) => {
+
+                      // Store actual file
+                      formik
+                        .setFieldValue("signature", file)
+                        .catch(() => undefined);
+
+                      // Store preview separately
+                      const previewUrl = URL.createObjectURL(file);
+
+                      setSignaturePreview(previewUrl);
+
+                      onEmployeeSignatureChange?.(previewUrl);
                     }}
                     onBlur={formik.handleBlur}
                   />
@@ -953,7 +1091,7 @@ const TeamLifeInsuranceNomination = ({
                 >
                   {formik.isSubmitting ? 'Submitting...' : 'Submit Form'}
                 </Button>
-                {employeePFData?.EmailID === 'hr@natit.in' || employeePFData?.EmailID === 'testgauge@natit.in' && (
+                {employeePFData?.EmailID === 'hr@natit.in' && (
                   <Button
                     type="button"
                     className="border-0 ms-2"
