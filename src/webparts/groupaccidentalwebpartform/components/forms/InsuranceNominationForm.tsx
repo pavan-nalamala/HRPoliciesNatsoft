@@ -858,7 +858,11 @@ import {
   createDateValueChangeHandler,
   createMatchingDateValidation,
   createDateValidation,
-  DatePickerInput
+  createSharedDobChangeHandler,
+  DatePickerInput,
+  formatSharePointDateForInput,
+  parseDobForSharePoint,
+  parseFormDateForSharePoint
 } from './dateFieldUtils';
 import SignatureUpload from './SignatureUpload';
 import moment from 'moment';
@@ -871,6 +875,13 @@ import {
   getCandidateValue,
   setFieldIfEmpty
 } from './candidateAutoFillUtils';
+import {
+  getListItemsByParentId,
+  replaceListItemAttachment,
+  stripNullishFields,
+  toAttachmentPreviewUrl,
+  upsertByCanId
+} from './sharePointListUtils';
 
 type NomineeRow = {
   nomineeNameAndAddress: string;
@@ -910,7 +921,12 @@ const InsuranceNominationForm = ({
   context,
   employeePFData,
   sharedDateOfBirth,
+  onSharedDateOfBirthChange,
+  isAdminEdit,
+  isFinallySubmitted,
+  submitButtonLabel = 'Continue',
 }: ISequentialFormProps): JSX.Element => {
+  const readOnly = !!isFinallySubmitted && !isAdminEdit;
   const [signaturePreview, setSignaturePreview] = React.useState<string>("");
 
   const formRef = React.useRef<HTMLDivElement>(null);
@@ -1034,35 +1050,57 @@ const InsuranceNominationForm = ({
 
         const sp = getSP(context);
 
-        const response = await sp.web.lists
-          .getByTitle("PersonalAccidentalScheme")
-          .items.add({
+        const employeeDob = parseDobForSharePoint(values.dateOfBirth);
+        const declarationDate = parseFormDateForSharePoint(
+          values.declarationDate,
+          'datetime'
+        );
+
+        if (!employeeDob || !declarationDate) {
+          throw new Error(
+            'Invalid date on the form. Please enter all dates in DD/MM/YYYY format.'
+          );
+        }
+
+        const itemId = await upsertByCanId(
+          sp,
+          'PersonalAccidentalScheme',
+          String(employeePFData?.ID),
+          {
             Title: values.employeeName,
             EmployeeName: values.employeeName,
             FatherName: values.fatherOrHusbandName,
-            DOB: moment(values.dateOfBirth, 'DD/MM/YYYY', true)
-              .format('YYYY-MM-DD'),
+            DOB: employeeDob,
             Gender: values.sex,
-            EmployeeID: Number(values.employeeId || null),
+            EmployeeID: values.employeeId
+              ? Number(values.employeeId)
+              : undefined,
             Address: values.address,
-            DeclarationDate: moment(values.declarationDate, 'DD/MM/YYYY').toISOString(),
-            Place: values.place,
-            can_id: String(employeePFData?.ID),
-          });
+            DeclarationDate: declarationDate,
+            Place: values.place
+          }
+        );
 
-        const parentId = response?.data?.Id;
-        const itemId = response?.data?.Id;
+        const parentId = itemId;
 
-        // SIGNATURE ATTACHMENT
-        if (values.signature instanceof File) {
-
+        const existingNominees = await sp.web.lists
+          .getByTitle('PersonalAccidentalSchemeNominees')
+          .items.filter(`ParentID eq ${itemId}`)();
+        for (const row of existingNominees) {
           await sp.web.lists
-            .getByTitle("PersonalAccidentalScheme")
-            .items.getById(itemId)
-            .attachmentFiles.add(
-              values.signature.name,
-              values.signature
-            );
+            .getByTitle('PersonalAccidentalSchemeNominees')
+            .items.getById(row.Id)
+            .delete();
+        }
+
+        if (values.signature instanceof File) {
+          await replaceListItemAttachment(
+            sp,
+            'PersonalAccidentalScheme',
+            itemId,
+            values.signature.name,
+            values.signature
+          );
         }
 
         // NOMINEES
@@ -1072,31 +1110,43 @@ const InsuranceNominationForm = ({
 
             if (!nominee.nomineeNameAndAddress) continue;
 
+            const nomineeDob = parseDobForSharePoint(nominee.dateOfBirth);
+            if (!nomineeDob) {
+              throw new Error(
+                `Invalid date of birth for nominee "${nominee.nomineeNameAndAddress}". Use DD/MM/YYYY.`
+              );
+            }
+
+            const shareAmount = Number(nominee.shareAmount);
+            const nomineePayload = stripNullishFields({
+              Title: values.employeeName,
+              ParentID: parentId,
+              NomineeName: nominee.nomineeNameAndAddress,
+              Relationship: nominee.relationship,
+              DOB: nomineeDob,
+              ShareAmount: Number.isFinite(shareAmount) ? shareAmount : 0,
+              GuardianDetails: nominee.guardianDetails || ''
+            });
+
             await sp.web.lists
-              .getByTitle("PersonalAccidentalSchemeNominees")
-              .items.add({
-                Title: values.employeeName,
-                ParentID: parentId,
-                NomineeName: nominee.nomineeNameAndAddress,
-                Relationship: nominee.relationship,
-                DOB: moment(
-                  nominee.dateOfBirth,
-                  'DD/MM/YYYY',
-                  true
-                ).format('YYYY-MM-DD'),
-                ShareAmount: Number(nominee.shareAmount),
-                GuardianDetails: nominee.guardianDetails
-              });
+              .getByTitle('PersonalAccidentalSchemeNominees')
+              .items.add(nomineePayload);
           }
         }
 
         onComplete?.();
 
-      } catch (error) {
+      } catch (error: unknown) {
 
         console.error("Submit Error:", error);
 
-        alert("Submission failed");
+        const spMessage =
+          (error as { data?: { 'odata.error'?: { message?: { value?: string } } } })
+            ?.data?.['odata.error']?.message?.value;
+        const fallback =
+          error instanceof Error ? error.message : undefined;
+
+        alert(spMessage || fallback || 'Submission failed');
       }
     }
   });
@@ -1137,106 +1187,66 @@ const InsuranceNominationForm = ({
         const sp = getSP(context);
 
         const items = await sp.web.lists
-          .getByTitle("PersonalAccidentalSchemeNominees")
+          .getByTitle('PersonalAccidentalScheme')
           .items
           .filter(`can_id eq '${employeePFData?.ID}'`)
           .top(1)
-          .orderBy("Created", false)();
+          .orderBy('Id', false)();
 
         if (!items.length) return;
 
         const item = items[0];
+        const parentId = Number(item.Id);
 
-        // GET ATTACHMENTS
         const attachments = await sp.web.lists
-          .getByTitle("PersonalAccidentalSchemeNominees")
-          .items.getById(item.Id)
+          .getByTitle('PersonalAccidentalScheme')
+          .items.getById(parentId)
           .attachmentFiles();
 
         const signatureAttachment = attachments?.[0];
+        const signatureUrl = toAttachmentPreviewUrl(
+          signatureAttachment?.ServerRelativeUrl
+        );
 
-        // FORM VALUES
+        const nomineeItems = await getListItemsByParentId(
+          sp,
+          'PersonalAccidentalSchemeNominees',
+          parentId
+        );
+
+        const nominees = nomineeItems.length
+          ? nomineeItems.map((n) => ({
+              nomineeNameAndAddress: String(n.NomineeName || ''),
+              relationship: String(n.Relationship || ''),
+              dateOfBirth: formatSharePointDateForInput(n.DOB as string),
+              shareAmount: n.ShareAmount ? String(n.ShareAmount) : '',
+              guardianDetails: String(n.GuardianDetails || '')
+            }))
+          : [createEmptyNominee()];
+
         await formik.setValues({
-
-          employeeName: item.EmployeeName || "",
-
-          fatherOrHusbandName: item.FatherName || "",
-
-          dateOfBirth: item.DOB
-            ? moment(item.DOB).format("DD/MM/YYYY")
-            : "",
-
-          sex: item.Gender || "",
-
-          employeeId: item.EmployeeID
-            ? String(item.EmployeeID)
-            : "",
-
-          address: item.Address || "",
-
-          declarationEmployeeName:
-            item.EmployeeName || "",
-
-          declarationDate: item.DeclarationDate
-            ? moment(item.DeclarationDate)
-              .format("DD/MM/YYYY")
-            : "",
-
-          nominees: [createEmptyNominee()],
-
-          place: item.Place || "",
-
-          date: item.Created
-            ? moment(item.Created)
-              .format("DD/MM/YYYY")
-            : "",
-
-          // IMPORTANT
-          signature:
-            signatureAttachment?.ServerRelativeUrl || ""
-
+          employeeName: item.EmployeeName || '',
+          fatherOrHusbandName: item.FatherName || '',
+          dateOfBirth: formatSharePointDateForInput(item.DOB),
+          sex: item.Gender || '',
+          employeeId: item.EmployeeID ? String(item.EmployeeID) : '',
+          address: item.Address || '',
+          declarationEmployeeName: item.EmployeeName || '',
+          declarationDate: formatSharePointDateForInput(item.DeclarationDate),
+          nominees,
+          place: item.Place || '',
+          date: formatSharePointDateForInput(item.Created),
+          signature: signatureUrl
         });
 
-        // PREVIEW
-        if (signatureAttachment?.ServerRelativeUrl) {
-
-          setSignaturePreview(
-            signatureAttachment.ServerRelativeUrl
-          );
+        const loadedDob = formatSharePointDateForInput(item.DOB as string);
+        if (loadedDob) {
+          onSharedDateOfBirthChange?.(loadedDob);
         }
 
-        // LOAD NOMINEES
-        const nomineeItems = await sp.web.lists
-          .getByTitle("InsuranceNominees")
-          .items
-          .filter(`ParentID eq ${item.Id}`)();
-
-        if (nomineeItems?.length) {
-
-          await formik.setFieldValue(
-            "nominees",
-            nomineeItems.map((n: any) => ({
-              nomineeNameAndAddress:
-                n.NomineeName || "",
-
-              relationship:
-                n.Relationship || "",
-
-              dateOfBirth:
-                n.DOB
-                  ? moment(n.DOB)
-                    .format("DD/MM/YYYY")
-                  : "",
-
-              shareAmount:
-                n.ShareAmount
-                  ? String(n.ShareAmount)
-                  : "",
-
-              guardianDetails:
-                n.GuardianDetails || ""
-            }))
-          );
+        if (signatureUrl) {
+          setSignaturePreview(signatureUrl);
+          onEmployeeSignatureChange?.(signatureUrl);
         }
 
       } catch (error) {
@@ -1413,7 +1423,11 @@ const InsuranceNominationForm = ({
                   <DatePickerInput
                     name="dateOfBirth"
                     value={formik.values.dateOfBirth}
-                    onValueChange={createDateValueChangeHandler(formik.setFieldValue, 'dateOfBirth')}
+                    onValueChange={createSharedDobChangeHandler(
+                      formik.setFieldValue,
+                      'dateOfBirth',
+                      onSharedDateOfBirthChange
+                    )}
                     onBlur={formik.handleBlur}
                   />
                   {formik.touched.dateOfBirth && formik.errors.dateOfBirth && (
@@ -1440,7 +1454,7 @@ const InsuranceNominationForm = ({
                   )}
                 </Col>
 
-                {employeePFData?.EmailID === 'hr@natit.in' && (
+                {isAdminEdit && (
                   <Col md={4}>
                     <Form.Label>5. EMP ID</Form.Label>
                     <Form.Control
@@ -1450,7 +1464,6 @@ const InsuranceNominationForm = ({
                       value={formik.values.employeeId}
                       onChange={formik.handleChange}
                       onBlur={formik.handleBlur}
-                      disabled={employeePFData?.EmailID !== 'hr@natit.in'}
                     />
                   </Col>
                 )}
@@ -1853,16 +1866,23 @@ const InsuranceNominationForm = ({
                 </Col>
               </Row>
 
+              {readOnly && (
+                <div className="alert alert-success mt-4 mb-0">
+                  Your forms have been finally submitted and can no longer be edited.
+                </div>
+              )}
               <div className="text-center mt-4">
-                <Button
-                  type="submit"
-                  className="border-0"
-                  style={{ backgroundColor: '#f18200' }}
-                  disabled={formik.isSubmitting}
-                >
-                  {formik.isSubmitting ? 'Submitting...' : 'Submit Form'}
-                </Button>
-                {employeePFData?.EmailID === 'hr@natit.in' && (
+                {!readOnly && (
+                  <Button
+                    type="submit"
+                    className="border-0"
+                    style={{ backgroundColor: '#f18200' }}
+                    disabled={formik.isSubmitting}
+                  >
+                    {formik.isSubmitting ? 'Saving...' : submitButtonLabel}
+                  </Button>
+                )}
+                {isAdminEdit && (
                   <Button
                     type="button"
                     className="border-0 ms-2"

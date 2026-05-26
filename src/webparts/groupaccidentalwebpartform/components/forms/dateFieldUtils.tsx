@@ -27,9 +27,105 @@ export const createDateValueChangeHandler = (
   setFieldValue(fieldName, formatDateInput(value)).catch(() => undefined);
 };
 
+/** Employee DOB field — keeps DD/MM/YYYY and syncs shared state across tabs. */
+export const createSharedDobChangeHandler = (
+  setFieldValue: (field: string, value: string) => Promise<unknown>,
+  fieldName: string,
+  onSharedDateOfBirthChange?: (value: string) => void
+) => (value: string): void => {
+  const formatted = formatDateInput(value);
+  setFieldValue(fieldName, formatted).catch(() => undefined);
+  onSharedDateOfBirthChange?.(formatted);
+};
+
 export const formatDateForDisplay = (date: Date): string => {
   return moment(date).format(DATE_INPUT_FORMAT);
 };
+
+export type SharePointDateFieldKind = 'date' | 'datetime';
+
+function parseFormDateValue(
+  value: string | undefined | null
+): moment.Moment | null {
+  if (!value?.trim()) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  const strictUi = moment(trimmed, DATE_INPUT_FORMAT, true);
+  if (strictUi.isValid()) {
+    return strictUi;
+  }
+
+  const isoDate = moment(trimmed, 'YYYY-MM-DD', true);
+  if (isoDate.isValid()) {
+    return isoDate;
+  }
+
+  const fromStorage = moment(trimmed);
+  return fromStorage.isValid() ? fromStorage : null;
+}
+
+/** Parse form date for SharePoint (date-only or DateTime column). */
+export function parseFormDateForSharePoint(
+  value: string | undefined | null,
+  kind: SharePointDateFieldKind = 'datetime'
+): string | null {
+  const parsed = parseFormDateValue(value);
+  if (!parsed) {
+    return null;
+  }
+
+  if (kind === 'date') {
+    return parsed.format('YYYY-MM-DD');
+  }
+
+  return toSharePointDateTimeIso(parsed);
+}
+
+/** DOB / birth-date columns — SharePoint DateTime fields (date-only display). */
+export function parseDobForSharePoint(
+  value: string | undefined | null
+): string | null {
+  return parseFormDateForSharePoint(value, 'datetime');
+}
+
+function toSharePointDateTimeIso(parsed: moment.Moment): string {
+  return moment
+    .utc({
+      year: parsed.year(),
+      month: parsed.month(),
+      date: parsed.date()
+    })
+    .toISOString();
+}
+
+/** @deprecated Use parseFormDateForSharePoint(value, 'datetime') */
+export function toSharePointDateTime(
+  value: string | undefined | null,
+  inputFormat: string = DATE_INPUT_FORMAT
+): string | null {
+  void inputFormat;
+  return parseFormDateForSharePoint(value, 'datetime');
+}
+
+/** Format stored SharePoint date values for display in form fields (DD/MM/YYYY). */
+export function formatSharePointDateForInput(
+  value: string | Date | undefined | null
+): string {
+  if (value === undefined || value === null || value === '') {
+    return '';
+  }
+
+  const raw = typeof value === 'string' ? value.trim() : value;
+  const utcParsed = moment.utc(raw);
+  if (utcParsed.isValid()) {
+    return utcParsed.format(DATE_INPUT_FORMAT);
+  }
+
+  const localParsed = moment(raw);
+  return localParsed.isValid() ? localParsed.format(DATE_INPUT_FORMAT) : '';
+}
 
 const formatDateForNativePicker = (value: string): string => {
   if (!value) {
@@ -155,7 +251,9 @@ export const createMatchingDateValidation = (
     }
 
     const parsedValue = moment(value, DATE_INPUT_FORMAT, true);
-    const parsedExpectedDate = moment(expectedDate, DATE_INPUT_FORMAT, true);
+    const normalizedExpected =
+      formatSharePointDateForInput(expectedDate) || expectedDate;
+    const parsedExpectedDate = moment(normalizedExpected, DATE_INPUT_FORMAT, true);
 
     if (!parsedValue.isValid() || !parsedExpectedDate.isValid()) {
       return true;

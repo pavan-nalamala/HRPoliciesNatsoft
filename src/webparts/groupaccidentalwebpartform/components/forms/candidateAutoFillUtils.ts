@@ -1,4 +1,4 @@
-import moment from 'moment';
+import { formatSharePointDateForInput } from './dateFieldUtils';
 
 export const getCandidateValue = (
   candidate: any,
@@ -25,9 +25,8 @@ export const getCandidateDateValue = (
 
   if (!value) return '';
 
-  const date = moment(value);
-
-  return date.isValid() ? date.format('DD/MM/YYYY') : value;
+  const formatted = formatSharePointDateForInput(value);
+  return formatted || value;
 };
 
 export const setFieldIfEmpty = async (

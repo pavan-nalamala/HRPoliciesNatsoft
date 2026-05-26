@@ -11,63 +11,91 @@ import {
 } from 'react-bootstrap';
 
 import type { ISequentialFormProps } from './ISequentialFormProps';
-import { getSP } from '../../../../pnpjsConfig';
+
+const RECRUITMENT_SITE_URL =
+    'https://natitin.sharepoint.com/sites/NatIt_HRRecruitment';
 
 const NatItServicesHrPolicyManual = ({
     onComplete,
     context,
     employeePFData,
-    isSubmitted
-}: ISequentialFormProps & { employeePFData: any }): JSX.Element => {
+    hasSavedProgress,
+    isFinallySubmitted,
+    submitButtonLabel = 'Continue'
+}: ISequentialFormProps): JSX.Element => {
 
     const [agreed, setAgreed] = useState(false);
     const [loading, setLoading] = useState(false);
-    const isAcknowledged = agreed || !!isSubmitted;
-
-    const sp = React.useMemo(() => getSP(context), [context]);
+    const readOnly = !!isFinallySubmitted;
+    const isAcknowledged = agreed || !!hasSavedProgress;
 
     const PDF_URL =
         `${context?.pageContext.web.absoluteUrl}/Shared Documents/JoiningFormalitiesDocuments/Nat IT Services _HR Policy Manual 1.0.pdf`;
 
-    React.useEffect(() => {
-
-        if (employeePFData) {
-
-
-            console.log(employeePFData);
-
-
+    useEffect(() => {
+        if (!employeePFData?.ID || !hasSavedProgress) {
+            return;
         }
+        setAgreed(true);
+    }, [employeePFData?.ID, hasSavedProgress]);
 
-    }, [employeePFData]);
-    
-    // SUBMIT TO SHAREPOINT (PnP)
-    
     const submitAcknowledgement = async (): Promise<void> => {
         setLoading(true);
 
         try {
-            await sp.web.lists.getByTitle("HRPolicyManual").items.add({
-                Title: "HR Policy Manual Acknowledgement",
-                employee_name: employeePFData?.Title || "Unknown",
-                can_id: String(employeePFData?.ID),
+            const siteUrl = RECRUITMENT_SITE_URL;
+            const canId = String(employeePFData?.ID);
+            const digestRes = await fetch(`${siteUrl}/_api/contextinfo`, {
+                method: 'POST',
+                headers: { Accept: 'application/json;odata=nometadata' }
+            });
+            const digestData = await digestRes.json();
+            const digest = digestData.FormDigestValue;
+
+            const existingRes = await fetch(
+                `${siteUrl}/_api/web/lists/getbytitle('HRPolicyManual')/items` +
+                    `?$filter=can_id eq '${canId}'&$top=1&$select=Id`,
+                { headers: { Accept: 'application/json;odata=nometadata' } }
+            );
+            const existingData = await existingRes.json();
+            const existingId = existingData.value?.[0]?.Id;
+
+            const body = JSON.stringify({
+                Title: 'HR Policy Manual Acknowledgement',
+                employee_name: employeePFData?.Title || 'Unknown',
                 acknowledgement_flag: true,
-                acknowledgement_time: new Date()
+                acknowledgement_time: new Date().toISOString(),
+                can_id: canId
             });
 
-            onComplete?.();
+            const url = existingId
+                ? `${siteUrl}/_api/web/lists/getbytitle('HRPolicyManual')/items(${existingId})`
+                : `${siteUrl}/_api/web/lists/getbytitle('HRPolicyManual')/items`;
 
+            const response = await fetch(url, {
+                method: existingId ? 'MERGE' : 'POST',
+                headers: {
+                    Accept: 'application/json;odata=nometadata',
+                    'Content-Type': 'application/json;odata=nometadata',
+                    'X-RequestDigest': digest,
+                    ...(existingId ? { 'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE' } : {})
+                },
+                body
+            });
+
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+
+            onComplete?.();
         } catch (error) {
-            console.error("Submission Error:", error);
-            alert("Submission failed");
+            console.error('Submission Error:', error);
+            alert('Submission failed');
         } finally {
             setLoading(false);
         }
     };
 
-    
-    // LOAD BOOTSTRAP
-    
     useEffect(() => {
         if (!document.getElementById('bootstrap-css')) {
             const link = document.createElement('link');
@@ -104,9 +132,7 @@ const NatItServicesHrPolicyManual = ({
                 </Card.Body>
             </Card>
 
-            {/* FOOTER ACTION */}
-
-            <div className="p-3"
+            <div
                 style={{
                     position: 'fixed',
                     bottom: 0,
@@ -116,26 +142,32 @@ const NatItServicesHrPolicyManual = ({
                     background: '#fff',
                     borderTop: '1px solid #dee2e6',
                     padding: '12px 20px'
-                }}>
+                }}
+            >
                 <Row className="align-items-center">
                     <Col md={8}>
                         <Form.Check
                             type="checkbox"
                             label="I have read and agree to the HR Policy Manual"
                             checked={isAcknowledged}
-                            disabled={!!isSubmitted}
+                            disabled={readOnly}
                             onChange={(e) => setAgreed(e.target.checked)}
                         />
                     </Col>
 
                     <Col md={4} className="text-end">
-                        <Button
-                            disabled={!isAcknowledged || loading || !!isSubmitted}
-                            onClick={submitAcknowledgement}
-                            style={{ backgroundColor: '#f18200', border: 'none' }}
-                        >
-                            {isSubmitted ? "Completed" : loading ? "Submitting..." : "Continue"}
-                        </Button>
+                        {!readOnly && (
+                            <Button
+                                disabled={!isAcknowledged || loading}
+                                onClick={submitAcknowledgement}
+                                style={{ backgroundColor: '#f18200', border: 'none' }}
+                            >
+                                {loading ? 'Saving...' : submitButtonLabel}
+                            </Button>
+                        )}
+                        {readOnly && (
+                            <span className="text-success fw-semibold">Completed</span>
+                        )}
                     </Col>
                 </Row>
             </div>

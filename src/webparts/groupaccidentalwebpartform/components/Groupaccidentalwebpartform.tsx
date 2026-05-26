@@ -15,15 +15,20 @@ import {
   TeamLifeInsuranceNomination,
   ThankYouMessage
 } from './forms';
-
-type FormKey =
-  | 'joiningFormalities'
-  | 'teamLifeInsuranceNomination'
-  | 'gratuityNominationForm'
-  | 'insuranceNominationForm'
-  | 'pfDeclaration'
-  | 'natItServicesHrPolicyManual'
-  | 'natItServicesHandbook';
+import {
+  getAdminDeepLinkToken,
+  isHrDeepLinkMode,
+  isHrUserEmail
+} from './forms/hrAccessUtils';
+import {
+  ADMIN_REVIEW_FORM_KEYS,
+  areAllEmployeeFormsSaved,
+  arePriorPfFormsSaved,
+  FormKey,
+  getAdminWorkflowStatus,
+  getEmployeeWorkflowStatus,
+  getSubmitButtonLabel
+} from './forms/formWorkflowUtils';
 
 type ViewKey = FormKey | 'thankYou';
 
@@ -32,10 +37,14 @@ interface IFormNavItem {
   label: string;
 }
 
+const RECRUITMENT_SITE_URL =
+  'https://natitin.sharepoint.com/sites/NatIt_HRRecruitment';
+
 interface IFormSubmissionCheck {
   listTitle: string;
   fieldName: string;
   valueType: 'candidateId' | 'email';
+  siteUrl?: string;
 }
 
 interface IGroupaccidentalwebpartformState {
@@ -46,6 +55,9 @@ interface IGroupaccidentalwebpartformState {
   currentUser: any;
   employeePFData: any[];
   showThankYouModal: boolean;
+  accessDenied: boolean;
+  isFinallySubmitted: boolean;
+  hrStatus: string;
 }
 
 const FORM_NAV_ITEMS: IFormNavItem[] = [
@@ -62,12 +74,14 @@ const FORM_SUBMISSION_CHECKS: Record<FormKey, IFormSubmissionCheck> = {
   natItServicesHandbook: {
     listTitle: 'EmployeeHandBook',
     fieldName: 'can_id',
-    valueType: 'candidateId'
+    valueType: 'candidateId',
+    siteUrl: RECRUITMENT_SITE_URL
   },
   natItServicesHrPolicyManual: {
     listTitle: 'HRPolicyManual',
     fieldName: 'can_id',
-    valueType: 'candidateId'
+    valueType: 'candidateId',
+    siteUrl: RECRUITMENT_SITE_URL
   },
   joiningFormalities: {
     listTitle: 'JoiningFormalities',
@@ -91,8 +105,8 @@ const FORM_SUBMISSION_CHECKS: Record<FormKey, IFormSubmissionCheck> = {
   },
   pfDeclaration: {
     listTitle: 'EPFDeclarationForm11',
-    fieldName: 'SubmittedEmail',
-    valueType: 'email'
+    fieldName: 'can_id',
+    valueType: 'candidateId'
   }
 };
 
@@ -108,66 +122,155 @@ export default class Groupaccidentalwebpartform extends React.Component<
     sharedDateOfBirth: '',
     currentUser: null,
     employeePFData: [],
-    showThankYouModal: false
+    showThankYouModal: false,
+    accessDenied: false,
+    isFinallySubmitted: false,
+    hrStatus: ''
   };
 
-  private _isAdminUser(): boolean {
-    const email = this.state.employeePFData?.[0]?.EmailID;
+  // =========================================
+  // ADMIN / HR ACCESS
+  // =========================================
 
-    if (!email) return false;
-
-    return email.toLowerCase() === 'hr@natit.in';
+  private _getLoggedInEmail(): string {
+    const user = this.state.currentUser;
+    return (
+      user?.mail ||
+      user?.userPrincipalName ||
+      ''
+    ).trim();
   }
 
+  private _isHrUser(): boolean {
+    return isHrUserEmail(this._getLoggedInEmail());
+  }
+
+  /** HR user — admin tabs, employee ID fields, PDF download. */
+  private _isAdminUser(): boolean {
+    return this._isHrUser();
+  }
+
+  private _isAdminDeepLinkSession(): boolean {
+    return (
+      this._isHrUser() &&
+      isHrDeepLinkMode() &&
+      !!getAdminDeepLinkToken()
+    );
+  }
+
+  // =========================================
+  // VISIBLE TABS
+  // =========================================
+
   private _getVisibleTabs(): IFormNavItem[] {
-    const isGauge = this._isAdminUser();
 
-    const gaugeTabs: FormKey[] = [
-      'joiningFormalities',
-      'teamLifeInsuranceNomination',
-      'gratuityNominationForm',
-      'insuranceNominationForm',
-      'pfDeclaration'
-    ];
+    if (this._isAdminDeepLinkSession()) {
 
-    if (isGauge) {
       return FORM_NAV_ITEMS.filter(item =>
-        gaugeTabs.indexOf(item.key) !== -1
+        ADMIN_REVIEW_FORM_KEYS.indexOf(item.key) !== -1
       );
     }
 
     return FORM_NAV_ITEMS;
   }
 
+  // =========================================
+  // TAB ENABLE
+  // =========================================
+
+  private _isFormEnabled(formKey: FormKey): boolean {
+
+    if (this._isAdminUser()) {
+      return true;
+    }
+
+    if (this.state.isFinallySubmitted) {
+      return true;
+    }
+
+    const visibleTabs = this._getVisibleTabs();
+
+    if (this.state.completedForms[formKey]) {
+      return true;
+    }
+
+    const firstIncompleteIndex = visibleTabs.findIndex(
+      item => !this.state.completedForms[item.key]
+    );
+
+    const clickedIndex = visibleTabs.findIndex(
+      item => item.key === formKey
+    );
+
+    return (
+      firstIncompleteIndex === -1 ||
+      clickedIndex <= firstIncompleteIndex
+    );
+  }
+
+  private _getWorkflowStatus(): 'Pending' | 'Completed' {
+
+    if (this._isAdminDeepLinkSession()) {
+      return getAdminWorkflowStatus(this.state.hrStatus);
+    }
+
+    return getEmployeeWorkflowStatus(
+      this.state.completedForms,
+      this.state.isFinallySubmitted
+    );
+  }
+
+  // =========================================
+  // ESCAPE ODATA
+  // =========================================
+
   private _escapeODataString(value: string): string {
+
     return value.replace(/'/g, "''");
   }
+
+  // =========================================
+  // NEXT FORM
+  // =========================================
 
   private _getNextIncompleteForm(
     completedForms: Partial<Record<FormKey, boolean>>
   ): ViewKey {
 
     const visibleTabs = this._getVisibleTabs();
-    const nextIncomplete = visibleTabs.find(item => !completedForms[item.key]);
+
+    const nextIncomplete =
+      visibleTabs.find(item => !completedForms[item.key]);
 
     return nextIncomplete?.key ?? 'thankYou';
   }
 
+  // =========================================
+  // ALL FORMS COMPLETED
+  // =========================================
+
   private _areAllFormsCompleted(
     completedForms: Partial<Record<FormKey, boolean>>
   ): boolean {
-
-    return FORM_NAV_ITEMS.every(item => !!completedForms[item.key]);
+    return areAllEmployeeFormsSaved(completedForms);
   }
+
+  // =========================================
+  // COMPONENT DID MOUNT
+  // =========================================
 
   public componentDidMount(): void {
 
     if (!document.getElementById('bootstrap-css')) {
+
       const link = document.createElement('link');
+
       link.id = 'bootstrap-css';
       link.rel = 'stylesheet';
+
       link.href =
         'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css';
+
       document.head.appendChild(link);
     }
 
@@ -176,14 +279,123 @@ export default class Groupaccidentalwebpartform extends React.Component<
       .then(client => client.api('/me').get())
       .then((user: any) => {
 
-        this.setState({ currentUser: user });
+        const email = (
+          user.mail ||
+          user.userPrincipalName ||
+          ''
+        ).trim();
 
-        void this._loadEmployeePF(user.mail || user.userPrincipalName);
+        const adminToken = getAdminDeepLinkToken();
+        const hrDeepLink = isHrDeepLinkMode();
+
+        this.setState({ currentUser: user }, () => {
+
+          if (hrDeepLink) {
+
+            if (!isHrUserEmail(email)) {
+
+              this.setState({ accessDenied: true });
+              return;
+            }
+
+            if (adminToken) {
+
+              void this._loadEmployeeByAdminToken(adminToken);
+              return;
+            }
+          }
+
+          void this._loadEmployeePF(email);
+        });
       })
       .catch(error => console.error('Graph Error:', error));
   }
 
-  private _loadEmployeePF = async (email: string): Promise<void> => {
+  // =========================================
+  // LOAD EMPLOYEE BY HR DEEP LINK TOKEN
+  // =========================================
+
+  private _loadEmployeeByAdminToken = async (
+    token: string
+  ): Promise<void> => {
+
+    try {
+
+      const siteUrl =
+        this.props.context.pageContext.web.absoluteUrl;
+
+      const filter =
+        `UniqueToken eq '${this._escapeODataString(token)}'`;
+
+      const epfUrl =
+        `${siteUrl}/_api/web/lists/getbytitle('EPFDeclarationForm11')/items` +
+        `?$select=Id,can_id,HRStatus&$top=1&$filter=${encodeURIComponent(filter)}`;
+
+      const epfResponse =
+        await this.props.context.spHttpClient.get(
+          epfUrl,
+          SPHttpClient.configurations.v1
+        );
+
+      const epfData = await epfResponse.json();
+
+      const epfItem = epfData?.value?.[0];
+      const epfHrStatus = epfItem?.HRStatus || '';
+
+      const candidateId = Number(epfItem?.can_id);
+
+      if (!candidateId) {
+
+        console.error('No employee found for admin deep link token.');
+        return;
+      }
+
+      const recruitmentUrl =
+        'https://natitin.sharepoint.com/sites/NatIt_HRRecruitment' +
+        `/_api/web/lists/getbytitle('Candidate Information')/items(${candidateId})`;
+
+      const candidateResponse =
+        await this.props.context.spHttpClient.get(
+          recruitmentUrl,
+          SPHttpClient.configurations.v1
+        );
+
+      const candidate = await candidateResponse.json();
+
+      const employeeEmail =
+        candidate.EmailID || candidate.Title || '';
+
+      this.setState(
+        {
+          employeePFData: [candidate],
+          hrStatus: epfHrStatus
+        },
+        () => {
+
+          this.setState({
+            selectedForm: 'joiningFormalities'
+          });
+
+          void this._loadCompletedForms(
+            employeeEmail,
+            candidateId
+          );
+        }
+      );
+
+    } catch (error) {
+
+      console.error('Admin deep link load error:', error);
+    }
+  };
+
+  // =========================================
+  // LOAD EMPLOYEE PF
+  // =========================================
+
+  private _loadEmployeePF = async (
+    email: string
+  ): Promise<void> => {
 
     try {
 
@@ -191,90 +403,158 @@ export default class Groupaccidentalwebpartform extends React.Component<
         "https://natitin.sharepoint.com/sites/NatIt_HRRecruitment" +
         "/_api/web/lists/getbytitle('Candidate Information')/items";
 
-      const response = await this.props.context.spHttpClient.get(
-        url,
-        SPHttpClient.configurations.v1
-      );
+      const response =
+        await this.props.context.spHttpClient.get(
+          url,
+          SPHttpClient.configurations.v1
+        );
 
       const data = await response.json();
 
       const filtered = data.value.filter((item: any) =>
-        item.EmailID === email || item.Title === email
+        item.EmailID === email ||
+        item.Title === email
       );
 
       this.setState(
         { employeePFData: filtered },
         () => {
-          const isGauge = this._isAdminUser();
-
-          if (isGauge) {
-            this.setState({ selectedForm: 'joiningFormalities' });
-            return;
-          }
-
-          void this._loadCompletedForms(email);
+          void this._loadCompletedForms(
+            email,
+            filtered[0]?.ID
+          );
         }
       );
 
     } catch (error) {
-      console.error("SharePoint List Error:", error);
+
+      console.error(
+        "SharePoint List Error:",
+        error
+      );
     }
   };
 
-  private _loadCompletedForms = async (email: string): Promise<void> => {
+  // =========================================
+  // LOAD COMPLETED FORMS
+  // =========================================
 
-    const candidateId = this.state.employeePFData?.[0]?.ID;
+  private _loadCompletedForms = async (
+    email: string,
+    candidateIdOverride?: number
+  ): Promise<void> => {
+
+    const candidateId =
+      candidateIdOverride ??
+      this.state.employeePFData?.[0]?.ID;
 
     if (!candidateId) {
-      this.setState({ selectedForm: 'natItServicesHandbook' });
+
+      this.setState({
+        selectedForm: 'natItServicesHandbook'
+      });
+
       return;
     }
 
-    const siteUrl = this.props.context.pageContext.web.absoluteUrl;
-    const completedForms: Partial<Record<FormKey, boolean>> = {};
+    const defaultSiteUrl =
+      this.props.context.pageContext.web.absoluteUrl;
+
+    const completedForms:
+      Partial<Record<FormKey, boolean>> = {};
+
+    let isFinallySubmitted = false;
+    let hrStatus = '';
 
     await Promise.all(
       FORM_NAV_ITEMS.map(async item => {
-        const check = FORM_SUBMISSION_CHECKS[item.key];
+
+        const check =
+          FORM_SUBMISSION_CHECKS[item.key];
+
         const rawValue =
           check.valueType === 'candidateId'
             ? String(candidateId)
             : email;
+
         const filter =
           `${check.fieldName} eq '${this._escapeODataString(rawValue)}'`;
+
+        const selectFields =
+          item.key === 'pfDeclaration'
+            ? 'Id,HRStatus,SubmittedTime'
+            : 'Id';
+
+        const listSiteUrl = check.siteUrl || defaultSiteUrl;
+
         const url =
-          `${siteUrl}/_api/web/lists/getbytitle('${check.listTitle}')/items` +
-          `?$select=Id&$top=1&$filter=${encodeURIComponent(filter)}`;
+          `${listSiteUrl}/_api/web/lists/getbytitle('${check.listTitle}')/items` +
+          `?$select=${selectFields}&$top=1&$filter=${encodeURIComponent(filter)}`;
 
         try {
-          const response = await this.props.context.spHttpClient.get(
-            url,
-            SPHttpClient.configurations.v1
-          );
+
+          const response =
+            await this.props.context.spHttpClient.get(
+              url,
+              SPHttpClient.configurations.v1
+            );
 
           if (!response.ok) {
-            console.error(`Unable to check ${check.listTitle}`);
+
+            console.error(
+              `Unable to check ${check.listTitle}`
+            );
+
             return;
           }
 
-          const data = await response.json();
+          const data =
+            await response.json();
+
+          const row = data.value?.[0];
+
           completedForms[item.key] =
-            Array.isArray(data.value) && data.value.length > 0;
+            Array.isArray(data.value) &&
+            data.value.length > 0;
+
+          if (item.key === 'pfDeclaration' && row) {
+
+            hrStatus = row.HRStatus || '';
+
+            isFinallySubmitted =
+              hrStatus === 'Pending' ||
+              hrStatus === 'Completed' ||
+              !!row.SubmittedTime;
+          }
 
         } catch (error) {
-          console.error(`Submission check failed for ${check.listTitle}:`, error);
+
+          console.error(
+            `Submission check failed for ${check.listTitle}:`,
+            error
+          );
         }
       })
     );
 
-    const nextForm = this._getNextIncompleteForm(completedForms);
+    const nextForm =
+      this._getNextIncompleteForm(completedForms);
 
     this.setState({
       completedForms,
-      selectedForm: nextForm === 'thankYou' ? 'pfDeclaration' : nextForm,
+      isFinallySubmitted,
+      hrStatus,
+      selectedForm:
+        nextForm === 'thankYou'
+          ? 'pfDeclaration'
+          : nextForm,
       showThankYouModal: false
     });
   };
+
+  // =========================================
+  // TAB CLICK
+  // =========================================
 
   private _handleTabClick = (
     e: React.MouseEvent<HTMLButtonElement>,
@@ -282,197 +562,385 @@ export default class Groupaccidentalwebpartform extends React.Component<
   ): void => {
 
     e.preventDefault();
-    this.setState({ selectedForm: key });
+
+    this.setState({
+      selectedForm: key
+    });
   };
 
-  private _isFormEnabled(): boolean {
+  // =========================================
+  // FORM COMPLETE
+  // =========================================
 
-    return true;
-  }
-
-  private _handleFormComplete = (key: FormKey): void => {
+  private _handleFormComplete = (
+    key: FormKey
+  ): void => {
 
     this.setState(prevState => {
 
-      const completedForms: Partial<Record<FormKey, boolean>> = {
+      const completedForms:
+        Partial<Record<FormKey, boolean>> = {
+
         ...prevState.completedForms,
         [key]: true
       };
 
-      const nextForm = this._getNextIncompleteForm(completedForms);
+      const nextForm =
+        this._getNextIncompleteForm(completedForms);
+
+      const isFinalPfSubmit =
+        key === 'pfDeclaration' && !this._isHrUser();
+
       const shouldShowThankYouModal =
-        key === 'pfDeclaration' && this._areAllFormsCompleted(completedForms);
+        isFinalPfSubmit &&
+        this._areAllFormsCompleted(completedForms);
 
       return {
+
         completedForms,
-        selectedForm: nextForm === 'thankYou' ? key : nextForm,
-        sharedEmployeeSignature: prevState.sharedEmployeeSignature,
-        sharedDateOfBirth: prevState.sharedDateOfBirth,
-        showThankYouModal: shouldShowThankYouModal
+
+        isFinallySubmitted:
+          prevState.isFinallySubmitted || isFinalPfSubmit,
+
+        hrStatus:
+          key === 'pfDeclaration' && this._isHrUser()
+            ? 'Completed'
+            : isFinalPfSubmit
+              ? 'Pending'
+              : prevState.hrStatus,
+
+        selectedForm:
+          nextForm === 'thankYou'
+            ? key
+            : nextForm,
+
+        sharedEmployeeSignature:
+          prevState.sharedEmployeeSignature,
+
+        sharedDateOfBirth:
+          prevState.sharedDateOfBirth,
+
+        showThankYouModal:
+          shouldShowThankYouModal
       };
     });
   };
 
-  private _handleThankYouClose = (): void => {
+  // =========================================
+  // THANK YOU CLOSE
+  // =========================================
 
-    this.setState({ showThankYouModal: false });
-  };
+  private _handleThankYouClose(): void {
 
-  private _handleEmployeeSignatureChange = (value: string): void => {
+    this.setState({
+      showThankYouModal: false
+    });
+  }
+
+  // =========================================
+  // SHARED SIGNATURE
+  // =========================================
+
+  private _handleEmployeeSignatureChange(
+    value: string
+  ): void {
 
     this.setState({
       sharedEmployeeSignature: value
     });
-  };
+  }
 
-  private _handleDateOfBirthChange = (value: string): void => {
+  // =========================================
+  // SHARED DOB
+  // =========================================
+
+  private _handleDateOfBirthChange(
+    value: string
+  ): void {
 
     this.setState({
       sharedDateOfBirth: value
     });
-  };
+  }
 
-  private _renderFormByKey(formKey: FormKey): React.ReactElement {
+  // =========================================
+  // RENDER FORM
+  // =========================================
 
-    const { sharedEmployeeSignature, sharedDateOfBirth, employeePFData } = this.state;
+  private _renderFormByKey(
+    formKey: FormKey
+  ): React.ReactElement {
 
-    const spHttpClient = this.props.context.spHttpClient;
-    const siteUrl = this.props.context.pageContext.web.absoluteUrl;
+    const {
+      sharedEmployeeSignature,
+      sharedDateOfBirth,
+      employeePFData
+    } = this.state;
+
+    const spHttpClient =
+      this.props.context.spHttpClient;
+
+    const siteUrl =
+      this.props.context.pageContext.web.absoluteUrl;
+
+    const candidateId =
+      employeePFData?.[0]?.ID;
+
+    const isAdminEdit = this._isHrUser();
+    const isFinallySubmitted = this.state.isFinallySubmitted;
+    const hasSavedProgress = !!this.state.completedForms[formKey];
+    const workflowStatus = this._getWorkflowStatus();
+    const submitButtonLabel = getSubmitButtonLabel(formKey);
+    const canSubmitFinal =
+      formKey === 'pfDeclaration' &&
+      arePriorPfFormsSaved(this.state.completedForms);
+
+    const formProps = {
+      isAdminEdit,
+      isFinallySubmitted,
+      hasSavedProgress,
+      workflowStatus,
+      submitButtonLabel,
+      canSubmitFinal
+    };
 
     switch (formKey) {
 
       case 'joiningFormalities':
+
         return (
           <JoiningFormalities
             context={this.props.context}
             spHttpClient={spHttpClient}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
-            onComplete={() => this._handleFormComplete('joiningFormalities')}
+            candidateId={candidateId}
+            {...formProps}
+            onComplete={() =>
+              this._handleFormComplete(
+                'joiningFormalities'
+              )
+            }
             sharedEmployeeSignature={sharedEmployeeSignature}
-            onEmployeeSignatureChange={this._handleEmployeeSignatureChange}
+            onEmployeeSignatureChange={
+              this._handleEmployeeSignatureChange
+            }
             sharedDateOfBirth={sharedDateOfBirth}
-            onSharedDateOfBirthChange={this._handleDateOfBirthChange}
+            onSharedDateOfBirthChange={
+              this._handleDateOfBirthChange
+            }
           />
         );
 
       case 'teamLifeInsuranceNomination':
+
         return (
           <TeamLifeInsuranceNomination
             context={this.props.context}
             spHttpClient={spHttpClient}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
+            candidateId={candidateId}
+            {...formProps}
             onComplete={() =>
-              this._handleFormComplete('teamLifeInsuranceNomination')
+              this._handleFormComplete(
+                'teamLifeInsuranceNomination'
+              )
             }
             sharedEmployeeSignature={sharedEmployeeSignature}
-            onEmployeeSignatureChange={this._handleEmployeeSignatureChange}
+            onEmployeeSignatureChange={
+              this._handleEmployeeSignatureChange
+            }
             sharedDateOfBirth={sharedDateOfBirth}
-            onSharedDateOfBirthChange={this._handleDateOfBirthChange}
+            onSharedDateOfBirthChange={
+              this._handleDateOfBirthChange
+            }
           />
         );
 
       case 'gratuityNominationForm':
+
         return (
           <GratuityNominationForm
             context={this.props.context}
             spHttpClient={spHttpClient}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
+            candidateId={candidateId}
+            {...formProps}
             onComplete={() =>
-              this._handleFormComplete('gratuityNominationForm')
+              this._handleFormComplete(
+                'gratuityNominationForm'
+              )
             }
             sharedEmployeeSignature={sharedEmployeeSignature}
-            onEmployeeSignatureChange={this._handleEmployeeSignatureChange}
+            onEmployeeSignatureChange={
+              this._handleEmployeeSignatureChange
+            }
             sharedDateOfBirth={sharedDateOfBirth}
-            onSharedDateOfBirthChange={this._handleDateOfBirthChange}
+            onSharedDateOfBirthChange={
+              this._handleDateOfBirthChange
+            }
           />
         );
 
       case 'insuranceNominationForm':
+
         return (
           <InsuranceNominationForm
             context={this.props.context}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
+            candidateId={candidateId}
+            {...formProps}
             onComplete={() =>
-              this._handleFormComplete('insuranceNominationForm')
+              this._handleFormComplete(
+                'insuranceNominationForm'
+              )
             }
             sharedEmployeeSignature={sharedEmployeeSignature}
-            onEmployeeSignatureChange={this._handleEmployeeSignatureChange}
+            onEmployeeSignatureChange={
+              this._handleEmployeeSignatureChange
+            }
             sharedDateOfBirth={sharedDateOfBirth}
-            onSharedDateOfBirthChange={this._handleDateOfBirthChange}
+            onSharedDateOfBirthChange={
+              this._handleDateOfBirthChange
+            }
           />
         );
 
       case 'pfDeclaration':
+
         return (
           <PFDeclaration
             context={this.props.context}
             spHttpClient={spHttpClient}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
-            isSubmitted={!!this.state.completedForms.pfDeclaration}
+            candidateId={candidateId}
+            {...formProps}
             sharedDateOfBirth={sharedDateOfBirth}
-            onSharedDateOfBirthChange={this._handleDateOfBirthChange}
+            onSharedDateOfBirthChange={
+              this._handleDateOfBirthChange
+            }
             onComplete={() =>
-              this._handleFormComplete('pfDeclaration')
+              this._handleFormComplete(
+                'pfDeclaration'
+              )
             }
           />
         );
 
       case 'natItServicesHrPolicyManual':
+
         return (
           <NatItServicesHrPolicyManual
             context={this.props.context}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
-            isSubmitted={!!this.state.completedForms.natItServicesHrPolicyManual}
+            {...formProps}
             onComplete={() =>
-              this._handleFormComplete('natItServicesHrPolicyManual')
+              this._handleFormComplete(
+                'natItServicesHrPolicyManual'
+              )
             }
           />
         );
 
       case 'natItServicesHandbook':
+
         return (
           <NatItServicesHandbook
             spHttpClient={spHttpClient}
             siteUrl={siteUrl}
             employeePFData={employeePFData[0]}
-            isSubmitted={!!this.state.completedForms.natItServicesHandbook}
+            {...formProps}
             onComplete={() =>
-              this._handleFormComplete('natItServicesHandbook')
+              this._handleFormComplete(
+                'natItServicesHandbook'
+              )
             }
           />
         );
 
       default:
+
         return <div>No Form Found</div>;
     }
   }
 
-  public render(): React.ReactElement<IGroupaccidentalwebpartformProps> {
+  // =========================================
+  // RENDER
+  // =========================================
 
-    const { selectedForm, showThankYouModal } = this.state;
+  public render():
+    React.ReactElement<IGroupaccidentalwebpartformProps> {
+
+    const {
+      selectedForm,
+      showThankYouModal,
+      accessDenied
+    } = this.state;
+
+    if (accessDenied) {
+
+      return (
+        <section className="p-4">
+          <div className="alert alert-danger mb-0" role="alert">
+            This link is restricted to HR administrators. Please sign in with an
+            authorized HR account to review employee submissions.
+          </div>
+        </section>
+      );
+    }
 
     return (
       <section>
 
+        {this._isAdminDeepLinkSession() && (
+          <div className="alert alert-info mx-3 mt-3 mb-0" role="status">
+            HR review mode — verify employee data, complete Employee ID fields,
+            and download PDFs as needed.
+          </div>
+        )}
+
+        {this.state.employeePFData.length > 0 && (
+          <div className="mx-3 mt-3 mb-0 d-flex align-items-center gap-2">
+            <span className="text-muted">Status:</span>
+            <span
+              className={`badge ${this._getWorkflowStatus() === 'Completed' ? 'bg-success' : 'bg-warning text-dark'}`}
+            >
+              {this._getWorkflowStatus()}
+            </span>
+          </div>
+        )}
+
         <nav className={styles.topNav}>
+
           {this._getVisibleTabs().map(item => {
 
-            const isActive = selectedForm === item.key;
-            const isEnabled = this._isFormEnabled();
+            const isActive =
+              selectedForm === item.key;
+
+            const isEnabled =
+              this._isFormEnabled(item.key);
 
             return (
               <button
                 key={item.key}
                 type="button"
                 className={`${styles.navItem} ${isActive ? styles.navItemActive : ''}`}
-                disabled={this._isAdminUser() ? false : !isEnabled}
-                onClick={(e) => this._handleTabClick(e, item.key)}
+                disabled={
+                  this._isAdminUser()
+                    ? false
+                    : !isEnabled
+                }
+                onClick={(e) =>
+                  this._handleTabClick(
+                    e,
+                    item.key
+                  )
+                }
               >
                 {item.label}
               </button>
@@ -481,9 +949,15 @@ export default class Groupaccidentalwebpartform extends React.Component<
         </nav>
 
         {FORM_NAV_ITEMS.map(item => (
+
           <div
             key={item.key}
-            style={{ display: selectedForm === item.key ? 'block' : 'none' }}
+            style={{
+              display:
+                selectedForm === item.key
+                  ? 'block'
+                  : 'none'
+            }}
           >
             {this._renderFormByKey(item.key)}
           </div>
@@ -495,7 +969,9 @@ export default class Groupaccidentalwebpartform extends React.Component<
           centered
         >
           <Modal.Body className="text-center p-4">
+
             <ThankYouMessage />
+
           </Modal.Body>
         </Modal>
 

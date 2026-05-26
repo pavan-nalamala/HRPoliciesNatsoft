@@ -7,7 +7,9 @@ import type { ISequentialFormProps } from './ISequentialFormProps';
 import {
   createDateValueChangeHandler,
   createDateValidation,
-  DatePickerInput
+  DatePickerInput,
+  formatSharePointDateForInput,
+  parseFormDateForSharePoint
 } from './dateFieldUtils';
 import SignatureUpload from './SignatureUpload';
 import { getSP } from '../../../../pnpjsConfig';
@@ -20,6 +22,12 @@ import {
   getCandidateValue,
   setFieldIfEmpty
 } from './candidateAutoFillUtils';
+import {
+  getListItemsByParentId,
+  replaceListItemAttachment,
+  toAttachmentPreviewUrl,
+  upsertByCanId
+} from './sharePointListUtils';
 
 
 type NomineeRow = {
@@ -75,8 +83,12 @@ const GratuityNominationForm = ({
   sharedEmployeeSignature,
   onEmployeeSignatureChange,
   context,
-  employeePFData
+  employeePFData,
+  isAdminEdit,
+  isFinallySubmitted,
+  submitButtonLabel = 'Continue',
 }: ISequentialFormProps): JSX.Element => {
+  const readOnly = !!isFinallySubmitted && !isAdminEdit;
 
   const formRef = React.useRef<HTMLDivElement>(null);
   const [signaturePreview, setSignaturePreview] = React.useState<any>({});
@@ -177,96 +189,92 @@ const GratuityNominationForm = ({
     onSubmit: async (values) => {
       try {
         const sp = getSP(context);
-        const mainItem = await sp.web.lists
-          .getByTitle("GratuityNomination")
-          .items.add({
+
+        const spouseExclusionDate = parseFormDateForSharePoint(
+          values.spouseExclusionDate,
+          'datetime'
+        );
+        const dateOfJoining = parseFormDateForSharePoint(values.dateOfJoining, 'datetime');
+        const formDate = parseFormDateForSharePoint(values.date, 'datetime');
+        const employerCertificateDate = parseFormDateForSharePoint(
+          values.employerCertificateDate,
+          'datetime'
+        );
+        const acknowledgmentDate = parseFormDateForSharePoint(
+          values.acknowledgmentDate,
+          'datetime'
+        );
+
+        if (
+          !spouseExclusionDate ||
+          !dateOfJoining ||
+          !formDate ||
+          !employerCertificateDate ||
+          !acknowledgmentDate
+        ) {
+          throw new Error(
+            'Invalid date on the form. Please enter all dates in DD/MM/YYYY format.'
+          );
+        }
+
+        const itemId = await upsertByCanId(
+          sp,
+          'GratuityNomination',
+          String(employeePFData?.ID),
+          {
             Title: values.employeeIntroName,
             EmployeeName: values.employeeIntroName,
-
-            SpouseExclusionDate: values.spouseExclusionDate
-              ? moment(values.spouseExclusionDate, "DD/MM/YYYY").toISOString()
-              : null,
-
+            SpouseExclusionDate: spouseExclusionDate,
             EmployeeStatName: values.employeeStatementNameAndAddress,
             Sex: values.sex,
             Religion: values.religion,
             MaritalStatus: values.maritalStatus,
             Department: values.departmentBranchSection,
-
             EmployeeId: Number(values.employeeId),
-            can_id: String(employeePFData?.ID),
-            DateOfJoining: values.dateOfJoining
-              ? moment(values.dateOfJoining, "DD/MM/YYYY").toISOString()
-              : null,
-
+            DateOfJoining: dateOfJoining,
             PermanentAddress: values.permanentAddress,
             Place: values.place,
-
-            // IMPORTANT: ensure correct internal name
-            FormDate0: values.date
-              ? moment(values.date, "DD/MM/YYYY").toISOString()
-              : null,
-
+            FormDate0: formDate,
             ReferenceNo: String(values.referenceNo),
-
-            EmployerCertificateDate: values.employerCertificateDate
-              ? moment(values.employerCertificateDate, "DD/MM/YYYY").toISOString()
-              : null,
-
+            EmployerCertificateDate: employerCertificateDate,
             Designation: values.designation,
+            AcknowledgmentDate: acknowledgmentDate
+          }
+        );
 
-            AcknowledgmentDate: values.acknowledgmentDate
-              ? moment(values.acknowledgmentDate, "DD/MM/YYYY").toISOString()
-              : null,
-          });
+        const existingNominees = await sp.web.lists
+          .getByTitle('GratuityNominees')
+          .items.filter(`ParentID eq ${itemId}`)();
+        for (const row of existingNominees) {
+          await sp.web.lists.getByTitle('GratuityNominees').items.getById(row.Id).delete();
+        }
+        const existingWitnesses = await sp.web.lists
+          .getByTitle('GratuityWitnesses')
+          .items.filter(`ParentID eq ${itemId}`)();
+        for (const row of existingWitnesses) {
+          await sp.web.lists.getByTitle('GratuityWitnesses').items.getById(row.Id).delete();
+        }
 
-        const itemId = mainItem.data.Id;
 
-
-        // 3. Helper: upload attachment
         const uploadAttachment = async (
           fileName: string,
           file: File | string
-        ) => {
-
-          if (!(file instanceof File)) {
-            return;
-          }
-
-          await sp.web.lists
-            .getByTitle("GratuityNomination")
-            .items.getById(itemId)
-            .attachmentFiles.add(
-              fileName,
-              file
-            );
+        ): Promise<void> => {
+          await replaceListItemAttachment(
+            sp,
+            'GratuityNomination',
+            itemId,
+            fileName,
+            file
+          );
         };
 
-        // 4. ATTACHMENTS (5 SIGNATURES)
-
-
+        await uploadAttachment('EmployeeSignature.png', values.employeeSignature);
+        await uploadAttachment('Witness1Signature.png', values.witnesses?.[0]?.signature);
+        await uploadAttachment('Witness2Signature.png', values.witnesses?.[1]?.signature);
+        await uploadAttachment('AuthorizedSignature.png', values.authorizedSignature);
         await uploadAttachment(
-          "EmployeeSignature.png",
-          values.employeeSignature
-        );
-
-        await uploadAttachment(
-          "Witness1Signature.png",
-          values.witnesses?.[0]?.signature
-        );
-
-        await uploadAttachment(
-          "Witness2Signature.png",
-          values.witnesses?.[1]?.signature
-        );
-
-        await uploadAttachment(
-          "AuthorizedSignature.png",
-          values.authorizedSignature
-        );
-
-        await uploadAttachment(
-          "AcknowledgmentEmployeeSignature.png",
+          'AcknowledgmentEmployeeSignature.png',
           values.acknowledgmentEmployeeSignature
         );
 
@@ -304,7 +312,11 @@ const GratuityNominationForm = ({
         onComplete?.();
       } catch (error) {
         console.error("Submit Error:", error);
-        alert("Submission failed");
+        alert(
+          error instanceof Error
+            ? error.message
+            : 'Submission failed. Please check all dates are in DD/MM/YYYY format.'
+        );
       }
     }
   });
@@ -323,16 +335,16 @@ const GratuityNominationForm = ({
           .items
           .filter(`can_id eq '${employeePFData?.ID}'`)
           .top(1)
-          .orderBy("Created", false)();
+          .orderBy("Id", false)();
 
         if (!items.length) return;
 
         const item = items[0];
+        const parentId = Number(item.Id);
 
-        // ATTACHMENTS
         const attachments = await sp.web.lists
           .getByTitle("GratuityNomination")
-          .items.getById(item.Id)
+          .items.getById(parentId)
           .attachmentFiles();
 
         const employeeSignature =
@@ -366,17 +378,17 @@ const GratuityNominationForm = ({
               "AcknowledgmentEmployeeSignature.png"
           );
 
-        // NOMINEES
-        const nomineeItems = await sp.web.lists
-          .getByTitle("GratuityNominees")
-          .items
-          .filter(`ParentID eq ${item.Id}`)();
+        const nomineeItems = await getListItemsByParentId(
+          sp,
+          'GratuityNominees',
+          parentId
+        );
 
-        // WITNESSES
-        const witnessItems = await sp.web.lists
-          .getByTitle("GratuityWitnesses")
-          .items
-          .filter(`ParentID eq ${item.Id}`)();
+        const witnessItems = await getListItemsByParentId(
+          sp,
+          'GratuityWitnesses',
+          parentId
+        );
 
         // SET FORM VALUES
         await formik.setValues({
@@ -384,11 +396,9 @@ const GratuityNominationForm = ({
           employeeIntroName:
             item.EmployeeName || "",
 
-          spouseExclusionDate:
-            item.SpouseExclusionDate
-              ? moment(item.SpouseExclusionDate)
-                .format("DD/MM/YYYY")
-              : "",
+          spouseExclusionDate: formatSharePointDateForInput(
+            item.SpouseExclusionDate as string
+          ),
 
           nominees:
             nomineeItems?.length
@@ -431,11 +441,7 @@ const GratuityNominationForm = ({
               ? String(item.EmployeeId)
               : "",
 
-          dateOfJoining:
-            item.DateOfJoining
-              ? moment(item.DateOfJoining)
-                .format("DD/MM/YYYY")
-              : "",
+          dateOfJoining: formatSharePointDateForInput(item.DateOfJoining as string),
 
           permanentAddress:
             item.PermanentAddress || "",
@@ -443,29 +449,21 @@ const GratuityNominationForm = ({
           place:
             item.Place || "",
 
-          date:
-            item.FormDate0
-              ? moment(item.FormDate0)
-                .format("DD/MM/YYYY")
-              : "",
+          date: formatSharePointDateForInput(item.FormDate0 as string),
 
-          employeeSignature:
-            employeeSignature
-              ?.ServerRelativeUrl || "",
+          employeeSignature: toAttachmentPreviewUrl(
+            employeeSignature?.ServerRelativeUrl
+          ),
 
           witnesses:
             witnessItems?.length
               ? witnessItems.map(
-                (w: any, index: number) => ({
-                  nameAndAddress:
-                    w.NameAndAddress || "",
-
+                (w: Record<string, unknown>, index: number) => ({
+                  nameAndAddress: String(w.NameAndAddress || ''),
                   signature:
                     index === 0
-                      ? witness1Signature
-                        ?.ServerRelativeUrl || ""
-                      : witness2Signature
-                        ?.ServerRelativeUrl || ""
+                      ? toAttachmentPreviewUrl(witness1Signature?.ServerRelativeUrl)
+                      : toAttachmentPreviewUrl(witness2Signature?.ServerRelativeUrl)
                 })
               )
               : [
@@ -476,53 +474,38 @@ const GratuityNominationForm = ({
           referenceNo:
             item.ReferenceNo || "",
 
-          employerCertificateDate:
-            item.EmployerCertificateDate
-              ? moment(
-                item.EmployerCertificateDate
-              ).format("DD/MM/YYYY")
-              : "",
+          employerCertificateDate: formatSharePointDateForInput(
+            item.EmployerCertificateDate as string
+          ),
 
-          authorizedSignature:
-            authorizedSignature
-              ?.ServerRelativeUrl || "",
+          authorizedSignature: toAttachmentPreviewUrl(
+            authorizedSignature?.ServerRelativeUrl
+          ),
 
           designation:
             item.Designation || "",
 
-          acknowledgmentDate:
-            item.AcknowledgmentDate
-              ? moment(item.AcknowledgmentDate)
-                .format("DD/MM/YYYY")
-              : "",
+          acknowledgmentDate: formatSharePointDateForInput(
+            item.AcknowledgmentDate as string
+          ),
 
-          acknowledgmentEmployeeSignature:
-            acknowledgmentSignature
-              ?.ServerRelativeUrl || ""
+          acknowledgmentEmployeeSignature: toAttachmentPreviewUrl(
+            acknowledgmentSignature?.ServerRelativeUrl
+          )
         });
 
-        // PREVIEW STATE
         setSignaturePreview({
-
-          employeeSignature:
-            employeeSignature
-              ?.ServerRelativeUrl || "",
-
-          witness0:
-            witness1Signature
-              ?.ServerRelativeUrl || "",
-
-          witness1:
-            witness2Signature
-              ?.ServerRelativeUrl || "",
-
-          authorizedSignature:
-            authorizedSignature
-              ?.ServerRelativeUrl || "",
-
-          acknowledgmentEmployeeSignature:
-            acknowledgmentSignature
-              ?.ServerRelativeUrl || ""
+          employeeSignature: toAttachmentPreviewUrl(
+            employeeSignature?.ServerRelativeUrl
+          ),
+          witness0: toAttachmentPreviewUrl(witness1Signature?.ServerRelativeUrl),
+          witness1: toAttachmentPreviewUrl(witness2Signature?.ServerRelativeUrl),
+          authorizedSignature: toAttachmentPreviewUrl(
+            authorizedSignature?.ServerRelativeUrl
+          ),
+          acknowledgmentEmployeeSignature: toAttachmentPreviewUrl(
+            acknowledgmentSignature?.ServerRelativeUrl
+          )
         });
 
       } catch (error) {
@@ -1050,7 +1033,7 @@ const GratuityNominationForm = ({
                       </p>
                     )}
                 </Col>
-                {employeePFData?.EmailID === 'hr@natit.in' && (
+                {isAdminEdit && (
                   <Col md={3}>
                     <Form.Label>EMP ID</Form.Label>
                     <Form.Control
@@ -1389,19 +1372,26 @@ const GratuityNominationForm = ({
                 </Col>
               </Row>
 
+              {readOnly && (
+                <div className="alert alert-success mt-4 mb-0">
+                  Your forms have been finally submitted and can no longer be edited.
+                </div>
+              )}
               <div className="text-center mt-5">
-                <Button
-                  type="submit"
-                  size="lg"
-                  style={{
-                    backgroundColor: '#f18200',
-                    border: 'none',
-                    minWidth: '200px'
-                  }}
-                >
-                  Submit Form
-                </Button>
-                {employeePFData?.EmailID === 'hr@natit.in' && (
+                {!readOnly && (
+                  <Button
+                    type="submit"
+                    size="lg"
+                    style={{
+                      backgroundColor: '#f18200',
+                      border: 'none',
+                      minWidth: '200px'
+                    }}
+                  >
+                    {submitButtonLabel}
+                  </Button>
+                )}
+                {isAdminEdit && (
                   <Button
                     type="button"
                     className="border-0 ms-2"

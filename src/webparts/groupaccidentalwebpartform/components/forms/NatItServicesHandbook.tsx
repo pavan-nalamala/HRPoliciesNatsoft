@@ -10,58 +10,88 @@ import {
   Alert
 } from 'react-bootstrap';
 import type { ISequentialFormProps } from './ISequentialFormProps';
-const NatItServicesHandbook = ({ onComplete, employeePFData, isSubmitted }: ISequentialFormProps & { employeePFData: any }): JSX.Element => {
+
+const RECRUITMENT_SITE_URL =
+  'https://natitin.sharepoint.com/sites/NatIt_HRRecruitment';
+
+const HANDBOOK_FOLDER_URL =
+  `${RECRUITMENT_SITE_URL}/Shared%20Documents/JoiningFormalitiesDocuments/NAT%20IT%20SERVICES_Hand%20book.pdf`;
+
+const NatItServicesHandbook = ({
+  onComplete,
+  employeePFData,
+  hasSavedProgress,
+  isFinallySubmitted,
+  submitButtonLabel = 'Continue'
+}: ISequentialFormProps): JSX.Element => {
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
-  const isAcknowledged = agreed || !!isSubmitted;
-  const HANDBOOK_FOLDER_URL =
-    "https://natitin.sharepoint.com/sites/NatIt_HRRecruitment/Shared%20Documents/JoiningFormalitiesDocuments/NAT%20IT%20SERVICES_Hand%20book.pdf";
-  React.useEffect(() => {
-    if (employeePFData) {
-      console.log(employeePFData);
+  const readOnly = !!isFinallySubmitted;
+  const isAcknowledged = agreed || !!hasSavedProgress;
+
+  useEffect(() => {
+    if (!employeePFData?.ID || !hasSavedProgress) {
+      return;
     }
-  }, [employeePFData]);
-  const submitAcknowledgement = async () => {
+    setAgreed(true);
+  }, [employeePFData?.ID, hasSavedProgress]);
+
+  const submitAcknowledgement = async (): Promise<void> => {
     setLoading(true);
     try {
-      const siteUrl = "https://natitin.sharepoint.com/sites/NatIt_HRRecruitment";
+      const siteUrl = RECRUITMENT_SITE_URL;
+      const canId = String(employeePFData?.ID);
       const digestRes = await fetch(`${siteUrl}/_api/contextinfo`, {
-        method: "POST",
-        headers: {
-          Accept: "application/json;odata=nometadata"
-        }
+        method: 'POST',
+        headers: { Accept: 'application/json;odata=nometadata' }
       });
       const digestData = await digestRes.json();
-      const response = await fetch(
-        `${siteUrl}/_api/web/lists/getbytitle('EmployeeHandBook')/items`,
-        {
-          method: "POST",
-          headers: {
-            Accept: "application/json;odata=nometadata",
-            "Content-Type": "application/json;odata=nometadata",
-            "X-RequestDigest": digestData.FormDigestValue
-          },
-          body: JSON.stringify({
-            Title: "Employee Handbook Acknowledgement",
-            employee_name: employeePFData?.Title || "Unknown",
-            acknowledgement_flag: true,
-            acknowledgement_time: new Date().toISOString(),
-            can_id: String(employeePFData?.ID)
-          })
-        }
+      const digest = digestData.FormDigestValue;
+
+      const existingRes = await fetch(
+        `${siteUrl}/_api/web/lists/getbytitle('EmployeeHandBook')/items` +
+          `?$filter=can_id eq '${canId}'&$top=1&$select=Id`,
+        { headers: { Accept: 'application/json;odata=nometadata' } }
       );
+      const existingData = await existingRes.json();
+      const existingId = existingData.value?.[0]?.Id;
+
+      const body = JSON.stringify({
+        Title: 'Employee Handbook Acknowledgement',
+        employee_name: employeePFData?.Title || 'Unknown',
+        acknowledgement_flag: true,
+        acknowledgement_time: new Date().toISOString(),
+        can_id: canId
+      });
+
+      const url = existingId
+        ? `${siteUrl}/_api/web/lists/getbytitle('EmployeeHandBook')/items(${existingId})`
+        : `${siteUrl}/_api/web/lists/getbytitle('EmployeeHandBook')/items`;
+
+      const response = await fetch(url, {
+        method: existingId ? 'MERGE' : 'POST',
+        headers: {
+          Accept: 'application/json;odata=nometadata',
+          'Content-Type': 'application/json;odata=nometadata',
+          'X-RequestDigest': digest,
+          ...(existingId ? { 'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE' } : {})
+        },
+        body
+      });
+
       if (!response.ok) {
         const err = await response.text();
-        console.error("SharePoint Error:", err);
         throw new Error(err);
       }
+
       onComplete?.();
     } catch (error) {
-      console.error("Submit failed:", error);
-      alert("Submission failed");
+      console.error('Submit failed:', error);
+      alert('Submission failed');
     }
     setLoading(false);
   };
+
   useEffect(() => {
     if (!document.getElementById('bootstrap-css')) {
       const link = document.createElement('link');
@@ -72,6 +102,7 @@ const NatItServicesHandbook = ({ onComplete, employeePFData, isSubmitted }: ISeq
       document.head.appendChild(link);
     }
   }, []);
+
   return (
     <>
       <FormSection title="NAT IT Services_Handbook" />
@@ -81,8 +112,8 @@ const NatItServicesHandbook = ({ onComplete, employeePFData, isSubmitted }: ISeq
             className="text-white fw-bold fs-4 text-center py-3 border-0"
             style={{ backgroundColor: '#f18200' }}
           >
-            NAT IT Services - Employee Handbook testing
-          </Card.Header> 
+            NAT IT Services - Employee Handbook
+          </Card.Header>
           <Card.Body className="p-4">
             <Alert variant="light" className="border rounded-3 mb-4">
               Please review the Employee Handbook carefully before continuing.
@@ -97,7 +128,6 @@ const NatItServicesHandbook = ({ onComplete, employeePFData, isSubmitted }: ISeq
           </Card.Body>
         </Card>
       </div>
-      {/* Bottom Bar */}
       <div
         style={{
           position: 'fixed',
@@ -116,26 +146,32 @@ const NatItServicesHandbook = ({ onComplete, employeePFData, isSubmitted }: ISeq
               type="checkbox"
               label="I have read and understood the Employee Handbook."
               checked={isAcknowledged}
-              disabled={!!isSubmitted}
+              disabled={readOnly}
               onChange={(e) => setAgreed(e.target.checked)}
             />
           </Col>
           <Col md={4} className="text-end">
-            <Button
-              disabled={!isAcknowledged || loading || !!isSubmitted}
-              onClick={submitAcknowledgement}
-              style={{
-                backgroundColor: isAcknowledged ? '#f18200' : '#adb5bd',
-                border: 'none',
-                minWidth: '180px'
-              }}
-            >
-              {isSubmitted ? "Completed" : loading ? "Submitting..." : "Continue"}
-            </Button>
+            {!readOnly && (
+              <Button
+                disabled={!isAcknowledged || loading}
+                onClick={submitAcknowledgement}
+                style={{
+                  backgroundColor: isAcknowledged ? '#f18200' : '#adb5bd',
+                  border: 'none',
+                  minWidth: '180px'
+                }}
+              >
+                {loading ? 'Saving...' : submitButtonLabel}
+              </Button>
+            )}
+            {readOnly && (
+              <span className="text-success fw-semibold">Completed</span>
+            )}
           </Col>
         </Row>
       </div>
     </>
   );
 };
+
 export default NatItServicesHandbook;

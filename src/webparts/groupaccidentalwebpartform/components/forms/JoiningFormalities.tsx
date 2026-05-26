@@ -8,7 +8,10 @@ import {
     createMatchingDateValidation,
     createDateValidation,
     DatePickerInput,
-    formatDateInput
+    formatDateInput,
+    formatSharePointDateForInput,
+    parseDobForSharePoint,
+    parseFormDateForSharePoint
 } from './dateFieldUtils';
 import SignatureUpload from './SignatureUpload';
 import { getSP } from '../../../../pnpjsConfig';
@@ -22,6 +25,7 @@ import {
     getCandidateValue,
     setFieldIfEmpty
 } from './candidateAutoFillUtils';
+import { replaceListItemAttachment, upsertByCanId } from './sharePointListUtils';
 
 type EducationRow = {
     qualification: string;
@@ -36,6 +40,16 @@ type Reference = {
     contact: string;
 };
 const maxPhotoSizeInBytes = 2 * 1024 * 1024;
+
+const toAttachmentPreviewUrl = (serverRelativeUrl?: string): string => {
+    if (!serverRelativeUrl) {
+        return '';
+    }
+    if (serverRelativeUrl.startsWith('http')) {
+        return serverRelativeUrl;
+    }
+    return `${window.location.origin}${serverRelativeUrl}`;
+};
 const JoiningFormalities = ({
     onComplete,
     sharedEmployeeSignature,
@@ -43,8 +57,13 @@ const JoiningFormalities = ({
     context,
     employeePFData,
     sharedDateOfBirth,
+    candidateId,
+    isAdminEdit,
+    isFinallySubmitted,
+    submitButtonLabel = 'Continue',
     onSharedDateOfBirthChange,
 }: ISequentialFormProps): JSX.Element => {
+    const readOnly = !!isFinallySubmitted && !isAdminEdit;
     const [getDepartments, setGetDepartments] = React.useState<any[]>([]);
     const [getDesignations, setGetDesignations] = React.useState<any[]>([]);
     const [getEducationsDetails, setGetEducationsDetails] = React.useState<any[]>([]);
@@ -277,70 +296,84 @@ const JoiningFormalities = ({
             try {
                 const sp = getSP(context);
                 if (!values.fullName) return;
-                const empResponse = await sp.web.lists
-                    .getByTitle("JoiningFormalities")
-                    .items.add({
+
+                const employeeDob = parseDobForSharePoint(values.dob);
+                const employeeActualDob = parseDobForSharePoint(values.actualDob);
+                const joiningLetterDate = parseFormDateForSharePoint(
+                    values.joiningLetterDate,
+                    'datetime'
+                );
+                const joiningDateText = parseFormDateForSharePoint(
+                    values.joiningDateText,
+                    'datetime'
+                );
+
+                if (!employeeDob || !employeeActualDob || !joiningLetterDate || !joiningDateText) {
+                    throw new Error(
+                        'Invalid date on the form. Please enter all dates in DD/MM/YYYY format.'
+                    );
+                }
+
+                const employeeSPID = await upsertByCanId(
+                    sp,
+                    'JoiningFormalities',
+                    String(employeePFData?.ID),
+                    {
                         Title: values.fullName,
                         hr_employee_ID: values.employeeId,
                         hr_designation: values.designation,
                         hr_department: values.department,
                         employee_full_name: values.fullName,
-                        employee_DOB: moment(values.dob, 'DD/MM/YYYY').toISOString(),
-                        employee_actual_DOB: moment(values.actualDob, 'DD/MM/YYYY').toISOString(),
+                        employee_DOB: employeeDob,
+                        employee_actual_DOB: employeeActualDob,
                         employee_reporting_to: values.reportingTo,
                         bank_name_as_per_bank_records: values.bankName,
                         bank_account_no: values.accountNo,
                         bank_IFSC_code: values.ifscCode,
                         bank_branch: values.branchDetails,
-                        joining_letter_date: values.joiningLetterDate
-                            ? moment(values.joiningLetterDate, 'DD/MM/YYYY').toISOString()
-                            : null,
+                        joining_letter_date: joiningLetterDate,
+                        joining_date_text: joiningDateText,
+                        designation_text: values.designationText
+                    }
+                );
 
-                        joining_date_text: values.joiningDateText
-                            ? moment(values.joiningDateText, 'DD/MM/YYYY').toISOString()
-                            : null,
-
-                        designation_text: values.designationText,
-                        can_id: String(employeePFData?.ID),
-                    });
-                // const employeeSPID = empResponse?.data?.Id;
-                // if (Array.isArray(values.education)) {
-                const employeeSPID = empResponse?.data?.Id;
-
-                // PHOTO UPLOAD
-                if (
-                    values.photoFile &&
-                    typeof values.photoFile !== "string"
-                ) {
-
-                    void sp.web.lists
-                        .getByTitle("JoiningFormalities")
-                        .items.getById(employeeSPID)
-                        .attachmentFiles.add(
-                            values.photoFile.name,
-                            values.photoFile
-                        )
-                        .catch((error) => {
-                            console.error("Photo upload error:", error);
-                        });
+                if (values.photoFile && typeof values.photoFile !== 'string') {
+                    await replaceListItemAttachment(
+                        sp,
+                        'JoiningFormalities',
+                        employeeSPID,
+                        values.photoFile.name,
+                        values.photoFile
+                    );
                 }
 
-                // SIGNATURE UPLOAD
-                if (
-                    values.signatureName &&
-                    typeof values.signatureName !== "string"
-                ) {
+                if (values.signatureName && typeof values.signatureName !== 'string') {
+                    await replaceListItemAttachment(
+                        sp,
+                        'JoiningFormalities',
+                        employeeSPID,
+                        values.signatureName.name,
+                        values.signatureName
+                    );
+                }
 
-                    void sp.web.lists
-                        .getByTitle("JoiningFormalities")
-                        .items.getById(employeeSPID)
-                        .attachmentFiles.add(
-                            values.signatureName.name,
-                            values.signatureName
-                        )
-                        .catch((error) => {
-                            console.error("Signature upload error:", error);
-                        });
+                const existingEducation = await sp.web.lists
+                    .getByTitle('EmployeeEducation')
+                    .items.filter(`EmployeeID eq '${employeeSPID}'`)();
+                for (const row of existingEducation) {
+                    await sp.web.lists
+                        .getByTitle('EmployeeEducation')
+                        .items.getById(row.Id)
+                        .delete();
+                }
+                const existingReferences = await sp.web.lists
+                    .getByTitle('EmployeeReferences')
+                    .items.filter(`EmployeeID eq '${employeeSPID}'`)();
+                for (const row of existingReferences) {
+                    await sp.web.lists
+                        .getByTitle('EmployeeReferences')
+                        .items.getById(row.Id)
+                        .delete();
                 }
 
                 if (Array.isArray(values.education)) {
@@ -352,8 +385,8 @@ const JoiningFormalities = ({
                             Qualification: edu.qualification,
                             Institute: edu.institute,
                             Specialization: edu.specialization,
-                            YearCompleted: edu.year
-                                ? moment(edu.year, 'YYYY').toISOString()
+                            YearCompleted: edu.year?.trim()
+                                ? parseFormDateForSharePoint(`01/01/${edu.year.trim()}`, 'datetime')
                                 : null
                         });
                     }
@@ -374,7 +407,11 @@ const JoiningFormalities = ({
                 onComplete?.();
             } catch (error) {
                 console.error("Submit Error:", error);
-                alert("Submission failed");
+                alert(
+                    error instanceof Error
+                        ? error.message
+                        : 'Submission failed. Please check all dates are in DD/MM/YYYY format.'
+                );
             }
         }
     });
@@ -442,8 +479,26 @@ const JoiningFormalities = ({
                     .items.getById(employeeSPID)
                     .attachmentFiles();
 
-                const photoAttachment = attachments.find((a: any) =>
-                    a.FileName.match(/\.(jpg|jpeg|png)$/i)
+                const imageAttachments = attachments.filter((a: { FileName?: string }) =>
+                    !!a.FileName?.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+                );
+
+                const signatureAttachment =
+                    imageAttachments.find((a: { FileName?: string }) =>
+                        /sign/i.test(a.FileName || '')
+                    ) ??
+                    (imageAttachments.length > 1
+                        ? imageAttachments[imageAttachments.length - 1]
+                        : undefined);
+
+                const photoAttachment = imageAttachments.find(
+                    (a: { FileName?: string; ServerRelativeUrl?: string }) =>
+                        a !== signatureAttachment
+                );
+
+                const photoUrl = toAttachmentPreviewUrl(photoAttachment?.ServerRelativeUrl);
+                const signatureUrl = toAttachmentPreviewUrl(
+                    signatureAttachment?.ServerRelativeUrl
                 );
 
                 await joiningFormValidation.setValues({
@@ -460,13 +515,9 @@ const JoiningFormalities = ({
 
                     fullName: data.employee_full_name || "",
 
-                    dob: data.employee_DOB
-                        ? moment(data.employee_DOB).format("DD/MM/YYYY")
-                        : "",
+                    dob: formatSharePointDateForInput(data.employee_DOB as string),
 
-                    actualDob: data.employee_actual_DOB
-                        ? moment(data.employee_actual_DOB).format("DD/MM/YYYY")
-                        : "",
+                    actualDob: formatSharePointDateForInput(data.employee_actual_DOB as string),
 
                     bankName: data.bank_name_as_per_bank_records || "",
 
@@ -476,9 +527,7 @@ const JoiningFormalities = ({
 
                     branchDetails: data.bank_branch || "",
 
-                    photoFile: photoAttachment
-                        ? photoAttachment.ServerRelativeUrl
-                        : null,
+                    photoFile: photoUrl || null,
 
                     education:
                         educationItems.length > 0
@@ -487,22 +536,23 @@ const JoiningFormalities = ({
                                 institute: edu.Institute || "",
                                 specialization: edu.Specialization || "",
                                 year: edu.YearCompleted
-                                    ? moment(edu.YearCompleted).format("YYYY")
+                                    ? formatSharePointDateForInput(edu.YearCompleted as string).split('/')[2] ||
+                                      ''
                                     : ""
                             }))
                             : [],
 
-                    joiningLetterDate: data.joining_letter_date
-                        ? moment(data.joining_letter_date).format("DD/MM/YYYY")
-                        : "",
+                    joiningLetterDate: formatSharePointDateForInput(
+                        data.joining_letter_date as string
+                    ),
 
-                    joiningDateText: data.joining_date_text
-                        ? moment(data.joining_date_text).format("DD/MM/YYYY")
-                        : "",
+                    joiningDateText: formatSharePointDateForInput(
+                        data.joining_date_text as string
+                    ),
 
                     designationText: data.designation_text || "",
 
-                    signatureName: "",
+                    signatureName: signatureUrl || joiningFormValidation.values.signatureName || "",
                     references:
                         referenceItems.length > 0
                             ? referenceItems.map((ref: any) => ({
@@ -514,6 +564,15 @@ const JoiningFormalities = ({
                             : []
 
                 });
+
+                const loadedDob = formatSharePointDateForInput(data.employee_DOB as string);
+                if (loadedDob) {
+                    onSharedDateOfBirthChange?.(loadedDob);
+                }
+
+                if (signatureUrl) {
+                    onEmployeeSignatureChange?.(signatureUrl);
+                }
 
             } catch (error) {
 
@@ -533,7 +592,8 @@ const JoiningFormalities = ({
     }, [sharedEmployeeSignature]);
     const handleDateOfBirthChange = (value: string): void => {
         const formattedValue = formatDateInput(value);
-        joiningFormValidation.setFieldValue("dob", formattedValue).catch(() => undefined);
+        joiningFormValidation.setFieldValue('dob', formattedValue).catch(() => undefined);
+        joiningFormValidation.setFieldValue('actualDob', formattedValue).catch(() => undefined);
         onSharedDateOfBirthChange?.(formattedValue);
     };
 
@@ -789,13 +849,13 @@ const JoiningFormalities = ({
                                     </div>
                                 </div>
                                 {/* Employee Details */}
-                                {employeePFData?.EmailID === 'hr@natit.in' && (
+                                {isAdminEdit && (
                                     <div>
                                         <h5
                                             className="text-white p-2 rounded"
                                             style={{ backgroundColor: "#f18200" }}
                                         >
-                                            Employee Details Testing the app
+                                            Employee Details
                                         </h5>
                                         <Row className="mb-3">
                                             <Col md={6}>
@@ -1328,15 +1388,22 @@ const JoiningFormalities = ({
                                             )}
                                     </div>
                                 </div>
+                                {readOnly && (
+                                    <div className="alert alert-success mt-4 mb-0">
+                                        Your forms have been finally submitted and can no longer be edited.
+                                    </div>
+                                )}
                                 <div className="text-center mt-4">
-                                    <Button
-                                        type="submit"
-                                        className="border-0"
-                                        style={{ backgroundColor: "#f18200" }}
-                                    >
-                                        Submit Form
-                                    </Button>
-                                    {employeePFData?.EmailID === 'hr@natit.in' && (
+                                    {!readOnly && (
+                                        <Button
+                                            type="submit"
+                                            className="border-0"
+                                            style={{ backgroundColor: "#f18200" }}
+                                        >
+                                            {submitButtonLabel}
+                                        </Button>
+                                    )}
+                                    {isAdminEdit && (
                                         <Button
                                             type="button"
                                             className="border-0 ms-2"

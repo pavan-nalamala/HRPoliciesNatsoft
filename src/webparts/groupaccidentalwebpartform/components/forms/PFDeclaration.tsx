@@ -16,8 +16,12 @@ import {
     createDateValueChangeHandler,
     createMatchingDateValidation,
     createDateValidation,
+    createSharedDobChangeHandler,
     DatePickerInput,
-    formatDateForDisplay
+    formatDateForDisplay,
+    formatSharePointDateForInput,
+    parseDobForSharePoint,
+    parseFormDateForSharePoint
 } from "./dateFieldUtils";
 import { getSP } from "../../../../pnpjsConfig";
 import jsPDF from "jspdf";
@@ -28,6 +32,11 @@ import {
     getCandidateValue,
     setFieldIfEmpty
 } from "./candidateAutoFillUtils";
+import {
+    buildAdminDeepLinkFromCurrentPage,
+    repairAdminDeepLinkIfNeeded
+} from "./hrAccessUtils";
+import { getLatestItemByCanId, upsertByCanId } from "./sharePointListUtils";
 
 type PFDeclarationValues = {
     employeeName: string;
@@ -114,8 +123,19 @@ const initialValues: PFDeclarationValues = {
 };
 
 
-export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, context, isSubmitted, employeePFData, sharedDateOfBirth }: ISequentialFormProps): JSX.Element {
+export default function PFDeclaration({
+    onComplete,
+    context,
+    isFinallySubmitted,
+    isAdminEdit,
+    canSubmitFinal,
+    employeePFData,
+    sharedDateOfBirth,
+    onSharedDateOfBirthChange,
+    submitButtonLabel = 'Submit'
+}: ISequentialFormProps): JSX.Element {
     const formRef = React.useRef<HTMLDivElement>(null);
+    const readOnly = !!isFinallySubmitted && !isAdminEdit;
 
     const commonDateOfBirth =
         sharedDateOfBirth || getCandidateDateValue(employeePFData, candidateFieldNames.dateOfBirth);
@@ -327,200 +347,117 @@ export default function PFDeclaration({ onComplete, spHttpClient, siteUrl, conte
             try {
 
                 const sp = getSP(context);
+                const canId = String(employeePFData?.ID);
 
-                // GENERATE UNIQUE TOKEN
-                // const token = crypto.randomUUID();
-                const token =
-                    Date.now().toString() +
-                    Math.random()
-                        .toString(36)
-                        .substring(2, 10);
+                if (!isAdminEdit && readOnly) {
+                    alert('Your forms have already been finally submitted.');
+                    return;
+                }
 
-                const deepLink =
-                    `${window.location.origin}` +
-                    `${context?.pageContext.web.serverRelativeUrl}` +
-                    `/SitePages/PFForms.aspx#/admin-edit/${token}?mode=hr`;
-                // SAVE FORM
-                const response = await sp.web.lists
-                    .getByTitle("EPFDeclarationForm11")
-                    .items.add({
+                if (!isAdminEdit && !canSubmitFinal) {
+                    alert('Please complete all previous forms before final submission.');
+                    return;
+                }
 
-                        Title: values.employeeName,
-
-                        EmployeeName: values.employeeName,
-
-                        DateOfBirth:
-                            values.dateOfBirth
-                                ? moment(
-                                    values.dateOfBirth,
-                                    "DD/MM/YYYY"
-                                ).toISOString()
-                                : null,
-
-                        FatherOrSpouse:
-                            values.relationType,
-
-                        FatherSpouseName:
-                            values.fatherOrSpouseName,
-
-                        Gender:
-                            values.gender,
-
-                        MaritalStatus:
-                            values.maritalStatus,
-
-                        Email:
-                            values.email,
-
-                        Mobile:
-                            values.mobileNo,
-
-                        EarlierMemberEPF1952:
-                            values.epf1952 === "Yes",
-
-                        EarlierMemberEPS1995:
-                            values.eps1995 === "Yes",
-
-                        InternationalWorker:
-                            values.internationalWorker === "Yes",
-
-                        CountryOrigin:
-                            values.countryOrigin || "",
-
-                        PassportNo:
-                            values.passportNo || "",
-
-                        PassportValidity:
-                            values.passportValidity
-                                ? moment(
-                                    values.passportValidity,
-                                    "DD/MM/YYYY"
-                                ).toISOString()
-                                : null,
-
-                        EducationalQualification:
-                            values.educationalQualification,
-
-                        SpeciallyAbled:
-                            values.speciallyAbled === "Yes",
-
-                        DisabilityCategory:
-                            values.disabilityCategory || "",
-
-                        BankAccountNo:
-                            values.bankAccNo,
-
-                        IFSCCode:
-                            values.ifscCode,
-
-                        AadhaarNo:
-                            values.aadharNo,
-
-                        DoHavePan:
-                            values.doHavePan === "Yes",
-
-                        PANNo:
-                            values.pan || "",
-
-                        Place:
-                            values.place,
-
-                        DeclarationAccepted:
-                            values.declarationAccepted || false,
-
-                        EmployeeDeclarationDate:
-                            new Date().toISOString(),
-
-                        PresentEmployerName:
-                            values.employerMemberName || "",
-
-                        DateOfJoining:
-                            values.employerJoinDate
-                                ? moment(
-                                    values.employerJoinDate,
-                                    "DD/MM/YYYY"
-                                ).toISOString()
-                                : null,
-
-                        PFMemberID:
-                            values.employerPfMemberId || "",
-
-                        UAN:
-                            values.employerUan ||
-                            values.uan ||
-                            "",
-
-                        PreviousPFDetails:
-                            values.previousPf || "",
-
-                        EmployerKycPending:
-                            values.employerKycPending || false,
-
-                        UANUploadedNotApproved:
-                            values.employerKycUploadedNotApproved || false,
-
-                        UANApprovedWithDSC:
-                            values.employerKycApproved || false,
-
-                        PreviousPFTransferred:
-                            values.employerTransferApproved || false,
-
-                        PhysicalClaimRequired:
-                            values.employerPhysicalClaim || false,
-
-                        EmployerDeclarationDate:
-                            values.employerDate
-                                ? moment(
-                                    values.employerDate,
-                                    "DD/MM/YYYY"
-                                ).toISOString()
-                                : null,
-
-                        EmployerName:
-                            values.employerMemberName || "",
-
-                        SubmittedBy:
-                            context?.pageContext.user.displayName || "",
-
-                        SubmittedEmail:
-                            context?.pageContext.user.email || "",
-
-                        SubmittedTime:
-                            new Date().toISOString(),
-
-                        // HR FLOW
-                        HRStatus: "Pending",
-
-                        AdminDeepLink:
-                            deepLink,
-
-                        // EMPLOYEE UNIQUE ID
-                        can_id:
-                            String(employeePFData?.ID),
-
-                        // UNIQUE TOKEN
-                        UniqueToken:
-                            token
-                    });
-
-                console.log(
-                    "HR Link:",
-                    deepLink
+                const existing = await getLatestItemByCanId(
+                    sp,
+                    'EPFDeclarationForm11',
+                    canId
                 );
-                console.log("response", response);
 
+                const token =
+                    (existing?.UniqueToken as string) ||
+                    `${Date.now()}${Math.random().toString(36).substring(2, 10)}`;
 
-                alert(`
-Form Submitted Successfully
+                const deepLink = repairAdminDeepLinkIfNeeded(
+                    existing?.AdminDeepLink as string | undefined,
+                    token
+                );
 
-HR Link:
-${deepLink}
-`);
+                const dateOfBirth = parseDobForSharePoint(values.dateOfBirth);
+                if (!dateOfBirth) {
+                    throw new Error(
+                        'Invalid date of birth. Please enter the date in DD/MM/YYYY format.'
+                    );
+                }
 
-                // OPTIONAL
-                window.open(
-                    deepLink,
-                    "_blank"
+                const basePayload: Record<string, unknown> = {
+                    Title: values.employeeName,
+                    EmployeeName: values.employeeName,
+                    DateOfBirth: dateOfBirth,
+                    FatherOrSpouse: values.relationType,
+                    FatherSpouseName: values.fatherOrSpouseName,
+                    Gender: values.gender,
+                    MaritalStatus: values.maritalStatus,
+                    Email: values.email,
+                    Mobile: values.mobileNo,
+                    EarlierMemberEPF1952: values.epf1952 === 'Yes',
+                    EarlierMemberEPS1995: values.eps1995 === 'Yes',
+                    InternationalWorker: values.internationalWorker === 'Yes',
+                    CountryOrigin: values.countryOrigin || '',
+                    PassportNo: values.passportNo || '',
+                    PassportValidity: parseFormDateForSharePoint(
+                        values.passportValidity,
+                        'datetime'
+                    ),
+                    EducationalQualification: values.educationalQualification,
+                    SpeciallyAbled: values.speciallyAbled === 'Yes',
+                    DisabilityCategory: values.disabilityCategory || '',
+                    BankAccountNo: values.bankAccNo,
+                    IFSCCode: values.ifscCode,
+                    AadhaarNo: values.aadharNo,
+                    DoHavePan: values.doHavePan === 'Yes',
+                    PANNo: values.pan || '',
+                    Place: values.place,
+                    DeclarationAccepted: values.declarationAccepted || false,
+                    PresentEmployerName: values.employerMemberName || '',
+                    DateOfJoining: parseFormDateForSharePoint(
+                        values.employerJoinDate,
+                        'datetime'
+                    ),
+                    PFMemberID: values.employerPfMemberId || '',
+                    UAN: values.employerUan || values.uan || '',
+                    PreviousPFDetails: values.previousPf || '',
+                    EmployerKycPending: values.employerKycPending || false,
+                    UANUploadedNotApproved: values.employerKycUploadedNotApproved || false,
+                    UANApprovedWithDSC: values.employerKycApproved || false,
+                    PreviousPFTransferred: values.employerTransferApproved || false,
+                    PhysicalClaimRequired: values.employerPhysicalClaim || false,
+                    EmployerDeclarationDate: parseFormDateForSharePoint(
+                        values.employerDate,
+                        'datetime'
+                    ),
+                    EmployerName: values.employerMemberName || '',
+                    UniqueToken: token,
+                    AdminDeepLink: deepLink
+                };
+
+                if (isAdminEdit) {
+                    await upsertByCanId(sp, 'EPFDeclarationForm11', canId, {
+                        ...basePayload,
+                        HRStatus: 'Completed',
+                        EmployerDeclarationDate:
+                            basePayload.EmployerDeclarationDate ||
+                            new Date().toISOString()
+                    });
+                    alert('HR verification submitted successfully.');
+                    onComplete?.();
+                    return;
+                }
+
+                await upsertByCanId(sp, 'EPFDeclarationForm11', canId, {
+                    ...basePayload,
+                    EmployeeDeclarationDate: new Date().toISOString(),
+                    SubmittedBy: context?.pageContext.user.displayName || '',
+                    SubmittedEmail: context?.pageContext.user.email || '',
+                    SubmittedTime: new Date().toISOString(),
+                    HRStatus: 'Pending'
+                });
+
+                console.log('HR admin deep link:', deepLink);
+
+                alert(
+                    'All forms submitted successfully. HR will review your submission.'
                 );
 
                 onComplete?.();
@@ -528,13 +465,13 @@ ${deepLink}
             } catch (error: any) {
 
                 console.error(
-                    "Submit Error => ",
+                    'Submit Error => ',
                     error
                 );
 
                 alert(
                     error?.message ||
-                    "Submission failed"
+                    'Submission failed'
                 );
             }
         }
@@ -556,6 +493,81 @@ ${deepLink}
 
         void autoFill();
     }, [employeePFData]);
+
+    React.useEffect(() => {
+        const loadSavedPf = async (): Promise<void> => {
+            try {
+                if (!employeePFData?.ID || !context) {
+                    return;
+                }
+
+                const sp = getSP(context);
+                const item = await getLatestItemByCanId(
+                    sp,
+                    'EPFDeclarationForm11',
+                    String(employeePFData.ID)
+                );
+
+                if (!item) {
+                    return;
+                }
+
+                await formik.setValues({
+                    ...formik.values,
+                    employeeName: String(item.EmployeeName || ''),
+                    dateOfBirth: formatSharePointDateForInput(item.DateOfBirth as string),
+                    relationType: String(item.FatherOrSpouse || ''),
+                    fatherOrSpouseName: String(item.FatherSpouseName || ''),
+                    gender: String(item.Gender || ''),
+                    maritalStatus: String(item.MaritalStatus || ''),
+                    email: String(item.Email || ''),
+                    mobileNo: String(item.Mobile || ''),
+                    epf1952: item.EarlierMemberEPF1952 ? 'Yes' : 'No',
+                    eps1995: item.EarlierMemberEPS1995 ? 'Yes' : 'No',
+                    internationalWorker: item.InternationalWorker ? 'Yes' : 'No',
+                    countryOrigin: String(item.CountryOrigin || ''),
+                    passportNo: String(item.PassportNo || ''),
+                    passportValidity: formatSharePointDateForInput(
+                        item.PassportValidity as string
+                    ),
+                    educationalQualification: String(item.EducationalQualification || ''),
+                    speciallyAbled: item.SpeciallyAbled ? 'Yes' : 'No',
+                    disabilityCategory: String(item.DisabilityCategory || ''),
+                    bankAccNo: String(item.BankAccountNo || ''),
+                    ifscCode: String(item.IFSCCode || ''),
+                    aadharNo: String(item.AadhaarNo || ''),
+                    doHavePan: item.DoHavePan ? 'Yes' : 'No',
+                    pan: String(item.PANNo || ''),
+                    place: String(item.Place || ''),
+                    declarationAccepted: !!item.DeclarationAccepted,
+                    employerMemberName: String(item.PresentEmployerName || item.EmployerName || ''),
+                    employerJoinDate: formatSharePointDateForInput(
+                        item.DateOfJoining as string
+                    ),
+                    employerPfMemberId: String(item.PFMemberID || ''),
+                    employerUan: String(item.UAN || ''),
+                    uan: String(item.UAN || ''),
+                    employerKycPending: !!item.EmployerKycPending,
+                    employerKycUploadedNotApproved: !!item.UANUploadedNotApproved,
+                    employerKycApproved: !!item.UANApprovedWithDSC,
+                    employerTransferApproved: !!item.PreviousPFTransferred,
+                    employerPhysicalClaim: !!item.PhysicalClaimRequired,
+                    employerDate: formatSharePointDateForInput(
+                        item.EmployerDeclarationDate as string
+                    )
+                });
+
+                const loadedDob = formatSharePointDateForInput(item.DateOfBirth as string);
+                if (loadedDob) {
+                    onSharedDateOfBirthChange?.(loadedDob);
+                }
+            } catch (error) {
+                console.error('Failed to load PF declaration', error);
+            }
+        };
+
+        void loadSavedPf();
+    }, [employeePFData?.ID, context]);
 
     const downloadPDF = async () => {
         const input = formRef.current;
@@ -711,7 +723,11 @@ ${deepLink}
                                     <DatePickerInput
                                         name="dateOfBirth"
                                         value={formik.values.dateOfBirth}
-                                        onValueChange={createDateValueChangeHandler(formik.setFieldValue, "dateOfBirth")}
+                                        onValueChange={createSharedDobChangeHandler(
+                                            formik.setFieldValue,
+                                            'dateOfBirth',
+                                            onSharedDateOfBirthChange
+                                        )}
                                         onBlur={formik.handleBlur}
                                     />
                                     {formik.touched.dateOfBirth && formik.errors.dateOfBirth && (
@@ -1202,7 +1218,7 @@ ${deepLink}
                                             {formik.errors.declarationAccepted}
                                         </p>
                                     )}
-                                {employeePFData?.EmailID === 'hr@natit.in' && (
+                                {isAdminEdit && (
                                     <Card className="mt-4 ">
                                         <Card.Header
                                             className="fw-bold text-center text-uppercase text-white"
@@ -1430,29 +1446,48 @@ ${deepLink}
                             </Card.Body>
                         </Card>
 
-                        {isSubmitted && (
+                        {readOnly && (
                             <Alert variant="success" className="mt-4 mb-0">
-                                All sections have been completed successfully.
+                                Your forms have been finally submitted and can no longer be edited.
+                            </Alert>
+                        )}
+
+                        {!readOnly && !canSubmitFinal && !isAdminEdit && (
+                            <Alert variant="warning" className="mt-4 mb-0">
+                                Complete all previous forms before final submission.
                             </Alert>
                         )}
 
                         <div className="text-end mt-4">
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                className="me-2"
-                                onClick={() => formik.resetForm()}
-                            >
-                                Clear
-                            </Button>
-                            <Button
-                                type="submit"
-                                style={{ background: "#f18200", border: "none" }}
-                                disabled={formik.isSubmitting || !!isSubmitted}
-                            >
-                                {formik.isSubmitting ? "Submitting..." : "Submit"}
-                            </Button>
-                            {employeePFData?.EmailID !== 'hr@natit.in' && (
+                            {!readOnly && (
+                                <>
+                                    {!isAdminEdit && (
+                                        <Button
+                                            type="button"
+                                            variant="secondary"
+                                            className="me-2"
+                                            onClick={() => formik.resetForm()}
+                                        >
+                                            Clear
+                                        </Button>
+                                    )}
+                                    <Button
+                                        type="submit"
+                                        style={{ background: "#f18200", border: "none" }}
+                                        disabled={
+                                            formik.isSubmitting ||
+                                            (!isAdminEdit && !canSubmitFinal)
+                                        }
+                                    >
+                                        {formik.isSubmitting
+                                            ? 'Saving...'
+                                            : isAdminEdit
+                                                ? 'Submit'
+                                                : submitButtonLabel}
+                                    </Button>
+                                </>
+                            )}
+                            {isAdminEdit && (
                                 <Button
                                     type="button"
                                     className="border-0 ms-2"
