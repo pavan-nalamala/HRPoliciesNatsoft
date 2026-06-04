@@ -17,6 +17,7 @@ import {
 } from './forms';
 import {
   getAdminDeepLinkToken,
+  getHrReviewCandidateId,
   isHrDeepLinkMode,
   isHrUserEmail
 } from './forms/hrAccessUtils';
@@ -29,6 +30,17 @@ import {
   getEmployeeWorkflowStatus,
   getSubmitButtonLabel
 } from './forms/formWorkflowUtils';
+import {
+  getHrStatusDisplayLabel,
+  HR_STATUS,
+  isEmployeeSubmissionLocked,
+  type WorkflowBadgeKind
+} from './forms/workflowConstants';
+import { DEFAULT_HR_DOCUMENT_LIBRARY } from './forms/documentLibraryUtils';
+import {
+  getCurrentUserProfile,
+  type CurrentUserProfile
+} from './forms/currentUserUtils';
 
 type ViewKey = FormKey | 'thankYou';
 
@@ -52,9 +64,11 @@ interface IGroupaccidentalwebpartformState {
   completedForms: Partial<Record<FormKey, boolean>>;
   sharedEmployeeSignature: string;
   sharedDateOfBirth: string;
-  currentUser: any;
+  currentUser: CurrentUserProfile | null;
   employeePFData: any[];
   showThankYouModal: boolean;
+  /** True when modal is shown because employee returned after a prior submit. */
+  thankYouAlreadySubmitted: boolean;
   accessDenied: boolean;
   isFinallySubmitted: boolean;
   hrStatus: string;
@@ -123,6 +137,7 @@ export default class Groupaccidentalwebpartform extends React.Component<
     currentUser: null,
     employeePFData: [],
     showThankYouModal: false,
+    thankYouAlreadySubmitted: false,
     accessDenied: false,
     isFinallySubmitted: false,
     hrStatus: ''
@@ -134,11 +149,7 @@ export default class Groupaccidentalwebpartform extends React.Component<
 
   private _getLoggedInEmail(): string {
     const user = this.state.currentUser;
-    return (
-      user?.mail ||
-      user?.userPrincipalName ||
-      ''
-    ).trim();
+    return (user?.mail || user?.userPrincipalName || '').trim();
   }
 
   private _isHrUser(): boolean {
@@ -151,10 +162,13 @@ export default class Groupaccidentalwebpartform extends React.Component<
   }
 
   private _isAdminDeepLinkSession(): boolean {
+    if (!this._isHrUser()) {
+      return false;
+    }
+
     return (
-      this._isHrUser() &&
-      isHrDeepLinkMode() &&
-      !!getAdminDeepLinkToken()
+      (isHrDeepLinkMode() || !!getHrReviewCandidateId()) &&
+      (!!getAdminDeepLinkToken() || !!getHrReviewCandidateId())
     );
   }
 
@@ -208,16 +222,36 @@ export default class Groupaccidentalwebpartform extends React.Component<
     );
   }
 
-  private _getWorkflowStatus(): 'Pending' | 'Completed' {
+  private _getWorkflowStatus(): WorkflowBadgeKind {
 
-    if (this._isAdminDeepLinkSession()) {
-      return getAdminWorkflowStatus(this.state.hrStatus);
+    if (this._isAdminDeepLinkSession() || this._isHrUser()) {
+      return getAdminWorkflowStatus(
+        this.state.hrStatus,
+        this.state.isFinallySubmitted
+      );
     }
 
     return getEmployeeWorkflowStatus(
       this.state.completedForms,
       this.state.isFinallySubmitted
     );
+  }
+
+  private _getWorkflowStatusLabel(): string {
+    return getHrStatusDisplayLabel(this.state.hrStatus);
+  }
+
+  private _isEmployeeViewMode(): boolean {
+    return (
+      !this._isHrUser() &&
+      (this.state.isFinallySubmitted ||
+        isEmployeeSubmissionLocked(this.state.hrStatus))
+    );
+  }
+
+  /** Employee thank-you modal stays open (no dismiss). */
+  private _isThankYouModalLocked(): boolean {
+    return this.state.showThankYouModal && !this._isHrUser();
   }
 
   // =========================================
@@ -274,42 +308,44 @@ export default class Groupaccidentalwebpartform extends React.Component<
       document.head.appendChild(link);
     }
 
-    void this.props.context.msGraphClientFactory
-      .getClient('3')
-      .then(client => client.api('/me').get())
-      .then((user: any) => {
+    void this._initializeCurrentUser();
+  }
 
-        const email = (
-          user.mail ||
-          user.userPrincipalName ||
-          ''
-        ).trim();
+  private _initializeCurrentUser = async (): Promise<void> => {
+    try {
+      const user = await getCurrentUserProfile(this.props.context);
+      const email = (user.mail || user.userPrincipalName || '').trim();
 
-        const adminToken = getAdminDeepLinkToken();
-        const hrDeepLink = isHrDeepLinkMode();
+      const adminToken = getAdminDeepLinkToken();
+      const hrDeepLink = isHrDeepLinkMode();
 
-        this.setState({ currentUser: user }, () => {
+      this.setState({ currentUser: user }, () => {
+        const reviewCandidateId = getHrReviewCandidateId();
+        const isHr = isHrUserEmail(email);
 
-          if (hrDeepLink) {
+        if (reviewCandidateId && isHr) {
+          void this._loadEmployeeByCandidateId(reviewCandidateId);
+          return;
+        }
 
-            if (!isHrUserEmail(email)) {
-
-              this.setState({ accessDenied: true });
-              return;
-            }
-
-            if (adminToken) {
-
-              void this._loadEmployeeByAdminToken(adminToken);
-              return;
-            }
+        if (hrDeepLink) {
+          if (!isHr) {
+            this.setState({ accessDenied: true });
+            return;
           }
 
-          void this._loadEmployeePF(email);
-        });
-      })
-      .catch(error => console.error('Graph Error:', error));
-  }
+          if (adminToken) {
+            void this._loadEmployeeByAdminToken(adminToken);
+            return;
+          }
+        }
+
+        void this._loadEmployeePF(email);
+      });
+    } catch {
+      // User profile could not be loaded.
+    }
+  };
 
   // =========================================
   // LOAD EMPLOYEE BY HR DEEP LINK TOKEN
@@ -345,8 +381,6 @@ export default class Groupaccidentalwebpartform extends React.Component<
       const candidateId = Number(epfItem?.can_id);
 
       if (!candidateId) {
-
-        console.error('No employee found for admin deep link token.');
         return;
       }
 
@@ -383,9 +417,63 @@ export default class Groupaccidentalwebpartform extends React.Component<
         }
       );
 
-    } catch (error) {
+    } catch {
+      // Admin deep link load failed silently; HR can retry or use canId URL.
+    }
+  };
 
-      console.error('Admin deep link load error:', error);
+  // =========================================
+  // LOAD EMPLOYEE BY can_id (HR DEEP LINK)
+  // =========================================
+
+  private _loadEmployeeByCandidateId = async (
+    candidateId: string
+  ): Promise<void> => {
+    const numericId = Number(candidateId);
+
+    if (!numericId) {
+      return;
+    }
+
+    try {
+      const recruitmentUrl =
+        `${RECRUITMENT_SITE_URL}` +
+        `/_api/web/lists/getbytitle('Candidate Information')/items(${numericId})`;
+
+      const candidateResponse =
+        await this.props.context.spHttpClient.get(
+          recruitmentUrl,
+          SPHttpClient.configurations.v1
+        );
+
+      const candidate = await candidateResponse.json();
+      const employeeEmail = candidate.EmailID || candidate.Title || '';
+
+      const siteUrl = this.props.context.pageContext.web.absoluteUrl;
+      const epfFilter = `can_id eq '${this._escapeODataString(String(numericId))}'`;
+      const epfUrl =
+        `${siteUrl}/_api/web/lists/getbytitle('EPFDeclarationForm11')/items` +
+        `?$select=Id,can_id,HRStatus&$top=1&$filter=${encodeURIComponent(epfFilter)}`;
+
+      const epfResponse = await this.props.context.spHttpClient.get(
+        epfUrl,
+        SPHttpClient.configurations.v1
+      );
+      const epfData = await epfResponse.json();
+      const epfHrStatus = epfData?.value?.[0]?.HRStatus || '';
+
+      this.setState(
+        {
+          employeePFData: [candidate],
+          hrStatus: epfHrStatus
+        },
+        () => {
+          this.setState({ selectedForm: 'joiningFormalities' });
+          void this._loadCompletedForms(employeeEmail, numericId);
+        }
+      );
+    } catch {
+      // HR candidate deep link load failed silently.
     }
   };
 
@@ -426,12 +514,8 @@ export default class Groupaccidentalwebpartform extends React.Component<
         }
       );
 
-    } catch (error) {
-
-      console.error(
-        "SharePoint List Error:",
-        error
-      );
+    } catch {
+      // Candidate list load failed silently.
     }
   };
 
@@ -500,11 +584,6 @@ export default class Groupaccidentalwebpartform extends React.Component<
             );
 
           if (!response.ok) {
-
-            console.error(
-              `Unable to check ${check.listTitle}`
-            );
-
             return;
           }
 
@@ -522,17 +601,11 @@ export default class Groupaccidentalwebpartform extends React.Component<
             hrStatus = row.HRStatus || '';
 
             isFinallySubmitted =
-              hrStatus === 'Pending' ||
-              hrStatus === 'Completed' ||
-              !!row.SubmittedTime;
+              isEmployeeSubmissionLocked(hrStatus) || !!row.SubmittedTime;
           }
 
-        } catch (error) {
-
-          console.error(
-            `Submission check failed for ${check.listTitle}:`,
-            error
-          );
+        } catch {
+          // Submission check failed for this list; treat as not completed.
         }
       })
     );
@@ -540,15 +613,20 @@ export default class Groupaccidentalwebpartform extends React.Component<
     const nextForm =
       this._getNextIncompleteForm(completedForms);
 
+    const showReturnVisitModal =
+      isFinallySubmitted && !this._isHrUser();
+
     this.setState({
       completedForms,
       isFinallySubmitted,
       hrStatus,
-      selectedForm:
-        nextForm === 'thankYou'
+      selectedForm: showReturnVisitModal
+        ? 'natItServicesHandbook'
+        : nextForm === 'thankYou'
           ? 'pfDeclaration'
           : nextForm,
-      showThankYouModal: false
+      showThankYouModal: showReturnVisitModal,
+      thankYouAlreadySubmitted: showReturnVisitModal
     });
   };
 
@@ -604,9 +682,9 @@ export default class Groupaccidentalwebpartform extends React.Component<
 
         hrStatus:
           key === 'pfDeclaration' && this._isHrUser()
-            ? 'Completed'
+            ? HR_STATUS.VERIFIED_COMPLETED
             : isFinalPfSubmit
-              ? 'Pending'
+              ? HR_STATUS.PENDING_FROM_HR
               : prevState.hrStatus,
 
         selectedForm:
@@ -620,8 +698,8 @@ export default class Groupaccidentalwebpartform extends React.Component<
         sharedDateOfBirth:
           prevState.sharedDateOfBirth,
 
-        showThankYouModal:
-          shouldShowThankYouModal
+        showThankYouModal: shouldShowThankYouModal,
+        thankYouAlreadySubmitted: false
       };
     });
   };
@@ -631,6 +709,9 @@ export default class Groupaccidentalwebpartform extends React.Component<
   // =========================================
 
   private _handleThankYouClose(): void {
+    if (this._isThankYouModalLocked()) {
+      return;
+    }
 
     this.setState({
       showThankYouModal: false
@@ -695,13 +776,19 @@ export default class Groupaccidentalwebpartform extends React.Component<
       formKey === 'pfDeclaration' &&
       arePriorPfFormsSaved(this.state.completedForms);
 
+    const documentLibraryTitle =
+      this.props.hrDocumentLibraryTitle || DEFAULT_HR_DOCUMENT_LIBRARY;
+
     const formProps = {
       isAdminEdit,
       isFinallySubmitted,
       hasSavedProgress,
       workflowStatus,
       submitButtonLabel,
-      canSubmitFinal
+      canSubmitFinal,
+      documentLibraryTitle,
+      hrFormPagePath: this.props.hrFormPagePath,
+      hrStatusLabel: this._getWorkflowStatusLabel()
     };
 
     switch (formKey) {
@@ -900,7 +987,8 @@ export default class Groupaccidentalwebpartform extends React.Component<
         {this._isAdminDeepLinkSession() && (
           <div className="alert alert-info mx-3 mt-3 mb-0" role="status">
             HR review mode — verify employee data, complete Employee ID fields,
-            and download PDFs as needed.
+            update employer PF details, then submit to mark as Verified and
+            Completed. Documents will be archived to the HR document library.
           </div>
         )}
 
@@ -908,9 +996,15 @@ export default class Groupaccidentalwebpartform extends React.Component<
           <div className="mx-3 mt-3 mb-0 d-flex align-items-center gap-2">
             <span className="text-muted">Status:</span>
             <span
-              className={`badge ${this._getWorkflowStatus() === 'Completed' ? 'bg-success' : 'bg-warning text-dark'}`}
+              className={`badge ${
+                this._getWorkflowStatus() === 'verified'
+                  ? 'bg-success'
+                  : this._getWorkflowStatus() === 'pendingHr'
+                    ? 'bg-warning text-dark'
+                    : 'bg-secondary'
+              }`}
             >
-              {this._getWorkflowStatus()}
+              {this._getWorkflowStatusLabel()}
             </span>
           </div>
         )}
@@ -966,11 +1060,16 @@ export default class Groupaccidentalwebpartform extends React.Component<
         <Modal
           show={showThankYouModal}
           onHide={this._handleThankYouClose}
+          backdrop={this._isThankYouModalLocked() ? 'static' : true}
+          keyboard={!this._isThankYouModalLocked()}
           centered
         >
           <Modal.Body className="text-center p-4">
 
-            <ThankYouMessage />
+            <ThankYouMessage
+              alreadySubmitted={this.state.thankYouAlreadySubmitted}
+              statusLabel={this._getWorkflowStatusLabel()}
+            />
 
           </Modal.Body>
         </Modal>

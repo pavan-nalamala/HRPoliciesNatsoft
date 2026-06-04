@@ -223,7 +223,6 @@
 //         }
 //         onComplete?.();
 //       } catch (error) {
-//         console.error("Submit Error:", error);
 //         alert("Submission failed");
 //       }
 //     }
@@ -1137,9 +1136,6 @@ const InsuranceNominationForm = ({
         onComplete?.();
 
       } catch (error: unknown) {
-
-        console.error("Submit Error:", error);
-
         const spMessage =
           (error as { data?: { 'odata.error'?: { message?: { value?: string } } } })
             ?.data?.['odata.error']?.message?.value;
@@ -1249,12 +1245,8 @@ const InsuranceNominationForm = ({
           onEmployeeSignatureChange?.(signatureUrl);
         }
 
-      } catch (error) {
-
-        console.error(
-          "Load Existing Data Error",
-          error
-        );
+      } catch {
+        // Saved form data could not be loaded.
       }
     };
 

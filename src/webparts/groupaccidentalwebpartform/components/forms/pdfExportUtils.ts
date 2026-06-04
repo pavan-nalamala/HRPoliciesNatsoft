@@ -263,8 +263,7 @@ export const downloadElementAsPdf = async (
     }
 
     pdf.save(fileName);
-  } catch (error) {
-    console.error('PDF export failed, opening print fallback instead.', error);
+  } catch {
     openPrintFallback(sourceElement, fileName);
   } finally {
     if (pdfContainer?.parentNode) {

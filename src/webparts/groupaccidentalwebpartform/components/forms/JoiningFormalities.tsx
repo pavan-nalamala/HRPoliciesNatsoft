@@ -406,7 +406,6 @@ const JoiningFormalities = ({
                 }
                 onComplete?.();
             } catch (error) {
-                console.error("Submit Error:", error);
                 alert(
                     error instanceof Error
                         ? error.message
@@ -574,10 +573,8 @@ const JoiningFormalities = ({
                     onEmployeeSignatureChange?.(signatureUrl);
                 }
 
-            } catch (error) {
-
-                console.error("Auto populate error:", error);
-
+            } catch {
+                // Saved form data could not be loaded.
             }
 
         };
@@ -604,8 +601,8 @@ const JoiningFormalities = ({
                 .getByTitle("DepartmentsList")
                 .items();
             setGetDepartments(items);
-        } catch (error) {
-            console.error("Error fetching departments:", error);
+        } catch {
+            // Departments list unavailable.
         }
     };
     const getDesi = async (): Promise<void> => {
@@ -615,8 +612,8 @@ const JoiningFormalities = ({
                 .getByTitle("DesignationsList")
                 .items();
             setGetDesignations(items);
-        } catch (error) {
-            console.error("Error fetching designations:", error);
+        } catch {
+            // Designations list unavailable.
         }
     };
     const getEducations = async (): Promise<void> => {
@@ -626,8 +623,8 @@ const JoiningFormalities = ({
                 .getByTitle("EducationalBackground")
                 .items();
             setGetEducationsDetails(items);
-        } catch (error) {
-            console.error("Error fetching designations:", error);
+        } catch {
+            // Education options list unavailable.
         }
     };
     React.useEffect(() => {

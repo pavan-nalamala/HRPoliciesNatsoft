@@ -311,7 +311,6 @@ const GratuityNominationForm = ({
 
         onComplete?.();
       } catch (error) {
-        console.error("Submit Error:", error);
         alert(
           error instanceof Error
             ? error.message
@@ -508,12 +507,8 @@ const GratuityNominationForm = ({
           )
         });
 
-      } catch (error) {
-
-        console.error(
-          "Load Existing Data Error",
-          error
-        );
+      } catch {
+        // Saved form data could not be loaded.
       }
     };
 

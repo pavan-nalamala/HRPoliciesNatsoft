@@ -85,8 +85,7 @@ const NatItServicesHandbook = ({
       }
 
       onComplete?.();
-    } catch (error) {
-      console.error('Submit failed:', error);
+    } catch {
       alert('Submission failed');
     }
     setLoading(false);

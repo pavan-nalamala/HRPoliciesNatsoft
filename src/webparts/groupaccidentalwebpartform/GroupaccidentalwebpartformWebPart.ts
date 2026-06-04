@@ -13,6 +13,8 @@ import { IReadonlyTheme } from '@microsoft/sp-component-base';
 
 export interface IGroupaccidentalwebpartformWebPartProps {
   description: string;
+  hrDocumentLibraryTitle: string;
+  hrFormPagePath: string;
 }
 
 export default class GroupaccidentalwebpartformWebPart extends BaseClientSideWebPart<IGroupaccidentalwebpartformWebPartProps> {
@@ -31,7 +33,10 @@ export default class GroupaccidentalwebpartformWebPart extends BaseClientSideWeb
         userDisplayName: this.context.pageContext.user.displayName,
         spHttpClient: this.context.spHttpClient,
         siteUrl: this.context.pageContext.web.absoluteUrl,
-        context: this.context
+        context: this.context,
+        hrDocumentLibraryTitle:
+          this.properties.hrDocumentLibraryTitle || 'Link Document Library',
+        hrFormPagePath: this.properties.hrFormPagePath
       }
     );
 
@@ -108,6 +113,16 @@ export default class GroupaccidentalwebpartformWebPart extends BaseClientSideWeb
               groupFields: [
                 PropertyPaneTextField('description', {
                   label: strings.DescriptionFieldLabel
+                }),
+                PropertyPaneTextField('hrDocumentLibraryTitle', {
+                  label: 'HR document library name',
+                  description:
+                    'Documents are archived here after HR verification (default: Link Document Library).'
+                }),
+                PropertyPaneTextField('hrFormPagePath', {
+                  label: 'HR form page path',
+                  description:
+                    'Server-relative path for AdminDeepLink emails (default: /sites/NatIt_HRRecruitment/SitePages/GroupPersonalAccidentalNomination.aspx).'
                 })
               ]
             }

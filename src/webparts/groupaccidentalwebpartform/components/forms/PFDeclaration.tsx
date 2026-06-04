@@ -32,11 +32,10 @@ import {
     getCandidateValue,
     setFieldIfEmpty
 } from "./candidateAutoFillUtils";
-import {
-    buildAdminDeepLinkFromCurrentPage,
-    repairAdminDeepLinkIfNeeded
-} from "./hrAccessUtils";
+import { buildHrReviewLinkByCandidateId } from "./hrAccessUtils";
+import { archiveEmployeeDocumentsToLibrary } from "./documentLibraryUtils";
 import { getLatestItemByCanId, upsertByCanId } from "./sharePointListUtils";
+import { HR_STATUS } from "./workflowConstants";
 
 type PFDeclarationValues = {
     employeeName: string;
@@ -132,7 +131,10 @@ export default function PFDeclaration({
     employeePFData,
     sharedDateOfBirth,
     onSharedDateOfBirthChange,
-    submitButtonLabel = 'Submit'
+    submitButtonLabel = 'Submit',
+    documentLibraryTitle,
+    hrFormPagePath,
+    hrStatusLabel
 }: ISequentialFormProps): JSX.Element {
     const formRef = React.useRef<HTMLDivElement>(null);
     const readOnly = !!isFinallySubmitted && !isAdminEdit;
@@ -335,7 +337,6 @@ export default function PFDeclaration({
 
         //     } catch (error: any) {
 
-        //         console.error("Submit Error => ", error);
 
 
         //         alert(error?.message || "Submission failed");
@@ -369,10 +370,9 @@ export default function PFDeclaration({
                     (existing?.UniqueToken as string) ||
                     `${Date.now()}${Math.random().toString(36).substring(2, 10)}`;
 
-                const deepLink = repairAdminDeepLinkIfNeeded(
-                    existing?.AdminDeepLink as string | undefined,
-                    token
-                );
+                const deepLink = buildHrReviewLinkByCandidateId(canId, {
+                    formPagePath: hrFormPagePath
+                });
 
                 const dateOfBirth = parseDobForSharePoint(values.dateOfBirth);
                 if (!dateOfBirth) {
@@ -435,12 +435,33 @@ export default function PFDeclaration({
                 if (isAdminEdit) {
                     await upsertByCanId(sp, 'EPFDeclarationForm11', canId, {
                         ...basePayload,
-                        HRStatus: 'Completed',
+                        HRStatus: HR_STATUS.VERIFIED_COMPLETED,
                         EmployerDeclarationDate:
                             basePayload.EmployerDeclarationDate ||
                             new Date().toISOString()
                     });
-                    alert('HR verification submitted successfully.');
+
+                    let archiveMessage = '';
+                    try {
+                        if (context) {
+                            const archiveResult = await archiveEmployeeDocumentsToLibrary(
+                                context,
+                                canId,
+                                documentLibraryTitle
+                            );
+                            archiveMessage =
+                                archiveResult.filesCopied > 0
+                                    ? ` ${archiveResult.filesCopied} file(s) saved to folder "${archiveResult.folderName}" in the document library.`
+                                    : '';
+                        }
+                    } catch {
+                        archiveMessage =
+                            ' Note: document library upload did not complete — check library permissions and name.';
+                    }
+
+                    alert(
+                        `HR verification submitted successfully. Status: ${HR_STATUS.VERIFIED_COMPLETED}.${archiveMessage}`
+                    );
                     onComplete?.();
                     return;
                 }
@@ -451,10 +472,8 @@ export default function PFDeclaration({
                     SubmittedBy: context?.pageContext.user.displayName || '',
                     SubmittedEmail: context?.pageContext.user.email || '',
                     SubmittedTime: new Date().toISOString(),
-                    HRStatus: 'Pending'
+                    HRStatus: HR_STATUS.PENDING_FROM_HR
                 });
-
-                console.log('HR admin deep link:', deepLink);
 
                 alert(
                     'All forms submitted successfully. HR will review your submission.'
@@ -462,16 +481,11 @@ export default function PFDeclaration({
 
                 onComplete?.();
 
-            } catch (error: any) {
-
-                console.error(
-                    'Submit Error => ',
-                    error
-                );
-
+            } catch (error: unknown) {
                 alert(
-                    error?.message ||
-                    'Submission failed'
+                    error instanceof Error
+                        ? error.message
+                        : 'Submission failed'
                 );
             }
         }
@@ -561,8 +575,8 @@ export default function PFDeclaration({
                 if (loadedDob) {
                     onSharedDateOfBirthChange?.(loadedDob);
                 }
-            } catch (error) {
-                console.error('Failed to load PF declaration', error);
+            } catch {
+                // Saved PF declaration could not be loaded.
             }
         };
 
@@ -1448,7 +1462,9 @@ export default function PFDeclaration({
 
                         {readOnly && (
                             <Alert variant="success" className="mt-4 mb-0">
-                                Your forms have been finally submitted and can no longer be edited.
+                                View mode — your submission is complete
+                                {hrStatusLabel ? ` (${hrStatusLabel})` : ''}. Fields cannot be
+                                edited. Contact HR if you need changes.
                             </Alert>
                         )}
 

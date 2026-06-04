@@ -23,7 +23,13 @@ export interface ISequentialFormProps {
   candidateId?: number;
   isAdminEdit?: boolean;
   submitButtonLabel?: 'Continue' | 'Submit';
-  workflowStatus?: 'Pending' | 'Completed';
+  workflowStatus?: 'inProgress' | 'pendingHr' | 'verified';
   /** Required before employee can run final PF Submit. */
   canSubmitFinal?: boolean;
+  /** SharePoint document library for HR-completed file archive. */
+  documentLibraryTitle?: string;
+  /** Server-relative form page path for AdminDeepLink (HR emails). */
+  hrFormPagePath?: string;
+  /** Human-readable HR status label for banners. */
+  hrStatusLabel?: string;
 }

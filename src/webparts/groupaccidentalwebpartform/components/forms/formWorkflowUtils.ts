@@ -1,3 +1,9 @@
+import {
+  getWorkflowBadgeKind,
+  isHrVerificationComplete,
+  type WorkflowBadgeKind
+} from './workflowConstants';
+
 export type FormKey =
   | 'joiningFormalities'
   | 'teamLifeInsuranceNomination'
@@ -41,15 +47,22 @@ export function arePriorPfFormsSaved(
 export function getEmployeeWorkflowStatus(
   completedForms: Partial<Record<FormKey, boolean>>,
   isFinallySubmitted: boolean
-): 'Pending' | 'Completed' {
+): WorkflowBadgeKind {
   if (isFinallySubmitted && areAllEmployeeFormsSaved(completedForms)) {
-    return 'Completed';
+    return 'pendingHr';
   }
-  return 'Pending';
+  return 'inProgress';
 }
 
-export function getAdminWorkflowStatus(hrStatus?: string): 'Pending' | 'Completed' {
-  return hrStatus === 'Completed' ? 'Completed' : 'Pending';
+export function getAdminWorkflowStatus(
+  hrStatus?: string,
+  isFinallySubmitted?: boolean
+): WorkflowBadgeKind {
+  return getWorkflowBadgeKind(hrStatus, isFinallySubmitted);
+}
+
+export function isAdminWorkflowComplete(hrStatus?: string): boolean {
+  return isHrVerificationComplete(hrStatus);
 }
 
 export function getSubmitButtonLabel(formKey: FormKey): 'Continue' | 'Submit' {

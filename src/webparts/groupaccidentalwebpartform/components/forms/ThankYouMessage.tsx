@@ -1,6 +1,15 @@
 import * as React from 'react';
 
-const ThankYouMessage = (): JSX.Element => (
+export type ThankYouMessageProps = {
+  /** When true, employee is returning after a prior final submit. */
+  alreadySubmitted?: boolean;
+  statusLabel?: string;
+};
+
+const ThankYouMessage = ({
+  alreadySubmitted = false,
+  statusLabel
+}: ThankYouMessageProps): JSX.Element => (
   <div
     className="m-3 text-center"
     role="status"
@@ -108,7 +117,7 @@ const ThankYouMessage = (): JSX.Element => (
           marginBottom: '8px'
         }}
       >
-        Thank you
+        {alreadySubmitted ? 'Already submitted' : 'Thank you'}
       </h4>
       <p
         style={{
@@ -117,7 +126,9 @@ const ThankYouMessage = (): JSX.Element => (
           marginBottom: 0
         }}
       >
-        Your forms have been submitted successfully.
+        {alreadySubmitted
+          ? `You have already submitted your forms${statusLabel ? ` (${statusLabel})` : ''}. Fields are in view-only mode. Contact HR if you need changes.`
+          : 'Your forms have been submitted successfully.'}
       </p>
     </div>
   </div>

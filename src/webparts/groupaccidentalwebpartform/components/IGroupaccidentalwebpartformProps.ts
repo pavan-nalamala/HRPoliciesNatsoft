@@ -10,4 +10,8 @@ export interface IGroupaccidentalwebpartformProps {
   spHttpClient: SPHttpClient;
   siteUrl: string;
   context: WebPartContext;
+  /** Title of the linked document library (default: Link Document Library). */
+  hrDocumentLibraryTitle?: string;
+  /** Server-relative path for HR deep links (AdminDeepLink / emails). */
+  hrFormPagePath?: string;
 }

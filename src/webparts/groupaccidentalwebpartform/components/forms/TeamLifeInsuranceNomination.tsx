@@ -280,10 +280,7 @@ const TeamLifeInsuranceNomination = ({
 
         onComplete?.();
 
-      } catch (error) {
-
-        console.error("Submit Error:", error);
-
+      } catch {
         alert("Submission failed");
       }
     }
@@ -387,12 +384,8 @@ const TeamLifeInsuranceNomination = ({
           onEmployeeSignatureChange?.(signatureUrl);
         }
 
-      } catch (error) {
-
-        console.error(
-          "Load Existing Data Error",
-          error
-        );
+      } catch {
+        // Saved form data could not be loaded.
       }
     };
 

@@ -88,8 +88,7 @@ const NatItServicesHrPolicyManual = ({
             }
 
             onComplete?.();
-        } catch (error) {
-            console.error('Submission Error:', error);
+        } catch {
             alert('Submission failed');
         } finally {
             setLoading(false);
